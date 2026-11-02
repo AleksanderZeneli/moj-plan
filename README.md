@@ -61,6 +61,29 @@ Weryfikacja pliku HTML pobranego ze strony WCY:
 `python tools/import_wcy.py --html plan.html --group WCY25KY2S1`.
 Testy: `python -m unittest discover -s tests`.
 
+### Gdy automatyczne pobieranie zwraca 403, ale przeglądarka otwiera plan
+
+PlanWAT dokumentuje ten sam problem dla WCY i również przewiduje użycie
+HTML zapisanego w przeglądarce. Nie trzeba instalować Dockera ani uruchamiać
+publicznego proxy:
+
+1. Na komputerze otwórz oficjalny plan wybranej grupy, np.
+   `https://planzajec.wcy.wat.edu.pl/pl/rozklad?grupa_id=WCY25KY2S1`.
+2. Zapisz stronę jako **HTML only / Tylko HTML** (`Ctrl+S`). Jeśli zapisany
+   plik nie zawiera ukrytych danych zajęć, naciśnij `F12`, otwórz konsolę,
+   wykonaj `copy(document.documentElement.outerHTML)` i wklej wynik do
+   pliku `plan.html` w edytorze tekstu (to wyłącznie zawartość planu).
+3. W katalogu projektu uruchom
+   `python tools/import_wcy.py --html plan.html --group WCY25KY2S1`.
+4. Sprawdź wygenerowany `data/WCY25KY2S1.json`. Możesz dodać ten **publiczny
+   plan zajęć** do repozytorium, aby aplikacja pobierała go przez GitHub Pages.
+   Nie publikuj HTML zawierającego tokeny sesji, danych z e-Dziekanatu ani
+   ciasteczek/logów przeglądarki. Wystarczy wynikowy plik JSON.
+
+Ta metoda jest ręcznym importem aktualnej migawki, **nie zapewnia
+automatycznych aktualizacji**. W przypadku bloku 403 nie próbujemy omijać
+zabezpieczeń WAT rotacją niesprawdzonych serwerów proxy.
+
 GitHub Actions (`.github/workflows/sync-wcy.yml`) próbuje synchronizować plan
 dwa razy dziennie. Jeśli oficjalny serwer odrzuci żądanie 403, akcja zakończy
 się błędem, a poprzedni poprawny JSON nie zostanie nadpisany. Publikacja zmian
