@@ -1,4 +1,6 @@
 import importlib.util
+import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -26,6 +28,26 @@ class TimetableTests(unittest.TestCase):
     def test_fails_closed_on_missing_schedule(self):
         with self.assertRaisesRegex(ValueError, "structure"):
             module.parse("Forbidden", "WCY25KY2S1")
+
+    def test_preserves_file_when_data_unchanged(self):
+        data = module.parse(self.page, "WCY25KY2S1")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "calendar.json"
+            path.write_text(json.dumps(data), encoding="utf-8")
+            self.assertFalse(module.prepare_update(data, path, "2026-09-01"))
+
+    def test_rejects_suspicious_shrink(self):
+        data = module.parse(self.page, "WCY25KY2S1")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "calendar.json"
+            path.write_text(json.dumps({**data, "events": data["events"] * 4}), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "40%"):
+                module.prepare_update(data, path, "2026-09-01")
+
+    def test_rejects_old_semester(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(ValueError, "requested semester"):
+                module.prepare_update(module.parse(self.page, "WCY25KY2S1"), Path(tmp) / "none", "2027-03-01")
 
 
 if __name__ == "__main__":
