@@ -50,3 +50,21 @@ W repozytorium: **Settings → Pages → Build and deployment → Deploy from a 
 2. Uruchomić usługę Web Push, przechowując subskrypcje powiązane z zalogowanym użytkownikiem.
 3. Dodać powiadomienia o zmianach w planie i zbliżających się deadline'ach.
 4. Dodać eksport danych i testy automatyczne.
+# Oficjalny import rozkładu WCY
+
+Importer `tools/import_wcy.py` pobiera stronę grupy bezpośrednio z
+`https://planzajec.wcy.wat.edu.pl/pl/rozklad?grupa_id=WCY25KY2S1`.
+Nie korzysta z usług innych aplikacji ani nie wymaga danych do e-Dziekanatu.
+
+Uruchomienie ręczne: `python tools/import_wcy.py --group WCY25KY2S1`.
+Weryfikacja pliku HTML pobranego ze strony WCY:
+`python tools/import_wcy.py --html plan.html --group WCY25KY2S1`.
+Testy: `python -m unittest discover -s tests`.
+
+GitHub Actions (`.github/workflows/sync-wcy.yml`) próbuje synchronizować plan
+dwa razy dziennie. Jeśli oficjalny serwer odrzuci żądanie 403, akcja zakończy
+się błędem, a poprzedni poprawny JSON nie zostanie nadpisany. Publikacja zmian
+JSON do hostingu Sites wymaga osobnego wdrożenia; sam commit na GitHub nie
+aktualizuje automatycznie Sites. Wariant GitHub Pages może udostępniać JSON
+bezpośrednio z repozytorium.
+
