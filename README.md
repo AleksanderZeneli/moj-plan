@@ -68,3 +68,14 @@ JSON do hostingu Sites wymaga osobnego wdrożenia; sam commit na GitHub nie
 aktualizuje automatycznie Sites. Wariant GitHub Pages może udostępniać JSON
 bezpośrednio z repozytorium.
 
+Walidator zachowuje poprzedni plik, gdy nowe dane nie obejmują bieżącego
+semestru lub liczba zajęć spadnie o ponad 40%. Weryfikuje również identyfikator
+grupy. Nie generuje nowych commitów, jeśli plan się nie zmienił. W takich
+przypadkach wymagany jest ręczny przegląd, aby odróżnić prawdziwe odwołania
+zajęć od uszkodzonej odpowiedzi. W odróżnieniu od PlanWAT importer nie ma
+jeszcze mechanizmu wielokrotnego potwierdzania dużego spadku liczby zajęć.
+
+Źródło inspiracji architektonicznej: projekt PlanWAT
+(https://github.com/kilerdevs/PlanWAT, licencja MIT). Implementacja własna,
+bez pobierania plików kalendarzy lub korzystania z usług PlanWAT.
+
