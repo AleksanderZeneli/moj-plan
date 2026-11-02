@@ -40,6 +40,9 @@ def block_times(page):
 def parse(page, group):
     if not GROUP.fullmatch(group):
         raise ValueError("Invalid WCY group code")
+    heading = re.search(r"Rozkład\s+zajęć\s+grupy:\s*([A-Za-z0-9_*]+)", page, re.I)
+    if heading and heading.group(1).upper() != group.upper():
+        raise ValueError("Saved timetable belongs to a different WCY group")
     island = re.search(r'<div\s+class="lessons hidden"[^>]*>(.*?)</div>\s*<div\s+class="rozklad_container"', page, re.S)
     if not island:
         raise ValueError("Official schedule structure not found; refusing to publish an empty or incorrect plan")
@@ -57,10 +60,15 @@ def parse(page, group):
         name_match = re.search(r'<span\s+class="name"[^>]*>(.*?)</span>', raw, re.S)
         parts = [plain(piece) for piece in re.split(r"<br\s*/?>", name_match.group(1))] if name_match else []
         details = span(raw, "info")
-        subject = details.split(" - (")[0].strip(" -") or (parts[0] if parts else "Zajęcia")
-        kind_match = re.search(r"\(([^)]*)\)", details)
-        lesson_type = kind_match.group(1) if kind_match else ""
-        instructor = details.split(") - ", 1)[-1].strip(" -") if ") - " in details else ""
+        subject, sep, suffix = details.rpartition(" - (")
+        if sep:
+            lesson_type, end_marker, tail = suffix.partition(")")
+            if not end_marker:
+                lesson_type, tail = "", ""
+            instructor = tail.strip().removeprefix("-").strip(" -")
+        else:
+            subject, lesson_type, instructor = details, "", ""
+        subject = subject.strip(" -") or (parts[0] if parts else "Zajęcia")
         start, end = times[block]
         identity = "|".join((group, date, block, subject, lesson_type, parts[2] if len(parts) > 2 else "", instructor))
         event_id = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:20]
