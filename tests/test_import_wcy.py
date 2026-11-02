@@ -25,6 +25,16 @@ class TimetableTests(unittest.TestCase):
         self.assertEqual((item["date"], item["start_time"], item["end_time"]), ("2026-11-03", "08:00", "09:35"))
         self.assertEqual((item["title"], item["location"], item["type"]), ("Bazy danych", "213", "Laboratorium"))
 
+    def test_subject_parentheses_are_not_classified_as_type(self):
+        html_page = self.page.replace("Bazy danych - (Laboratorium) - Jan Kowalski", "Język obcy (II) międzywydziałowy - (Ćwiczenia) - -")
+        item = module.parse(html_page, "WCY25KY2S1")["events"][0]
+        self.assertEqual((item["title"], item["type"], item["instructor"]), ("Język obcy (II) międzywydziałowy", "Ćwiczenia", ""))
+
+    def test_group_mismatch_is_rejected(self):
+        html_page = self.page + "<h1>Rozkład zajęć grupy: WCY26KY3S1</h1>"
+        with self.assertRaisesRegex(ValueError, "different WCY group"):
+            module.parse(html_page, "WCY25KY2S1")
+
     def test_fails_closed_on_missing_schedule(self):
         with self.assertRaisesRegex(ValueError, "structure"):
             module.parse("Forbidden", "WCY25KY2S1")
