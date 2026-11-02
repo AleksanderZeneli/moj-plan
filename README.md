@@ -102,7 +102,10 @@ Zadania i notatki są chronione RLS i nie są zapisywane w lokalnej bazie PWA.
 
 Aby uruchomić prawdziwe logowanie, załóż własny projekt Supabase, wykonaj
 `supabase/schema.sql` w SQL Editor i wstaw **publiczne** wartości Project URL
-oraz anon/publishable key w `config.js`. Nigdy nie umieszczaj tam `service_role`
+oraz anon/publishable key jako zmienne repozytorium GitHub Actions
+`SUPABASE_URL` i `SUPABASE_ANON_KEY` (Settings → Secrets and variables → Actions
+→ Variables). Workflow zbuduje z nich publiczny `dist/config.js`, bez
+umieszczania wartości w kodzie repozytorium. Nigdy nie umieszczaj tam `service_role`
 ani kluczy secret. Dopóki konfiguracja jest pusta, działa tylko tryb DEMO,
 bez prawdziwego logowania i bez trwałości danych.
 
