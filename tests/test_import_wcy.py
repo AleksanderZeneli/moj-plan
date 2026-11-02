@@ -49,6 +49,12 @@ class TimetableTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "requested semester"):
                 module.prepare_update(module.parse(self.page, "WCY25KY2S1"), Path(tmp) / "none", "2027-03-01")
 
+    def test_decode_windows_saved_html(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "plan.html"
+            path.write_bytes("Zażółć gęślą".encode("windows-1250"))
+            self.assertEqual(module.decode_saved_html(path), "Zażółć gęślą")
+
 
 if __name__ == "__main__":
     unittest.main()
