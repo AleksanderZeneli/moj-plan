@@ -1,7 +1,6 @@
 name: GitHub Pages — Mój Plan
 on:
-  push:
-    branches: [main]
+  # Manualnie do czasu włączenia GitHub Pages.
   workflow_dispatch:
 permissions:
   contents: read
