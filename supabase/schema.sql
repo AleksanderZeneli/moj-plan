@@ -103,3 +103,10 @@ create policy own_class_preparations on public.class_preparations for all to aut
   with check ((select auth.uid()) = user_id);
 grant select, insert, update, delete on public.class_preparations to authenticated;
 revoke all on public.class_preparations from anon;
+
+-- Keep existing tasks; they remain under "Poza uczelnią" until reassigned.
+alter table public.tasks add column if not exists category text not null default 'personal'
+  check (category in ('personal', 'university'));
+alter table public.class_preparations add column if not exists completed boolean not null default false;
+
+alter table public.profiles add column if not exists hidden_classes jsonb not null default '[]'::jsonb;

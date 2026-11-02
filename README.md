@@ -120,10 +120,33 @@ Przesunięcie terminu powoduje nowe pytanie; stara notatka jest dostępna w sekc
 zmienionych lub odwołanych terminów i nie jest automatycznie przepisywana.
 Pytania są widoczne w aplikacji; nie są powiadomieniami push.
 
-Istniejący projekt Supabase wymaga wykonania migracji
-`supabase/migrations/20261102130000_class_preparations.sql` w SQL Editor
-lub przez skonfigurowany proces migracji. Sam push `schema.sql` nie wykonuje
-SQL w bazie. Nowe instalacje mogą uruchomić całe `supabase/schema.sql`.
+Migracje w `supabase/migrations/` są wykonywane przez workflow `database.yml`
+przed publikacją Pages. Wymaga on sekretu repozytorium `SUPABASE_DB_URL`
+z adresem połączenia PostgreSQL przez Session pooler (port 5432).
+Hasło w adresie musi być zakodowane jako część URL. Nie zapisuj tego adresu
+w publicznych zmiennych ani plikach repozytorium.
+`supabase db push` zapisuje historię wykonanych migracji i uruchamia tylko brakujące.
+Błąd migracji zatrzymuje publikację nowej wersji aplikacji.
+`schema.sql` jest pełnym schematem do instalacji ręcznej; jego edycja nie jest migracją.
+Początkowa migracja używa `create table if not exists` i nie usuwa danych z
+projektów wcześniej skonfigurowanych ręcznie.
+
+## Zadania, statusy i własny wybór zajęć
+
+- **Na zajęcia**: osobna lista zadań uczelnianych oraz przygotowania do zajęć z planu.
+- **Poza uczelnią**: zadania prywatne. Starsze zadania trafiają tutaj; kategorię można
+  zmienić podczas edycji zadania.
+- Kafelki na ekranie głównym prowadzą do odpowiednich list i filtrów.
+- Niebieski oznacza **Do sprawdzenia**, pomarańczowy **Do przygotowania**,
+  zielony **Przygotowane** lub **Bez przygotowania**. Status jest też zapisany tekstem.
+- Przycisk **Przygotowane** odznacza konkretny termin; można go ponownie otworzyć.
+- W **Ustawieniach → Moje zajęcia** można ukryć wybrane przedmioty i rodzaje zajęć
+  tylko na własnym koncie. Znikają z kalendarza, liczników i pytań o przygotowanie.
+  Publiczny plik JSON pozostaje pełny. Wykłady i laboratoria z baz danych można
+  zachować przy ukrytych ćwiczeniach.
+- Jednorazowa opcja `apply_owner_filters` w ręcznym workflow migracji zapisuje
+  wskazane filtry tylko wtedy, gdy baza zawiera dokładnie jedno konto. Przy wielu
+  kontach kończy się bez zmiany preferencji; wtedy należy użyć własnych ustawień.
 
 Walidator zachowuje poprzedni plik, gdy nowe dane nie obejmują bieżącego
 semestru lub liczba zajęć spadnie o ponad 40%. Weryfikuje również identyfikator

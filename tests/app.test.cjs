@@ -56,3 +56,41 @@ test('room and upstream ID changes keep answers; moved classes and different gro
   assert.equal(a.run("occurrenceKey({...event,start_time:'09:50'})!==key"),true);
   assert.equal(a.run("state.profile.wat_group='WCY26KY3S1';occurrenceKey(event)!==key"),true);
 });
+test('university and personal lists stay separate, including old tasks without a category',()=>{
+  const a=app();
+  a.run("state.tasks=[{id:'school',title:'Sprawozdanie',category:'university',completed:false},{id:'personal',title:'Zakupy',category:'personal',completed:false},{id:'legacy',title:'Stare zadanie',completed:false}]");
+  const school=a.run("taskList(Infinity,'university')"),personal=a.run("taskList(Infinity,'personal')");
+  assert.ok(school.includes('Sprawozdanie')&&!school.includes('Zakupy')&&!school.includes('Stare zadanie'));
+  assert.ok(personal.includes('Zakupy')&&personal.includes('Stare zadanie')&&!personal.includes('Sprawozdanie'));
+  a.run("state.tasks[0].category='personal'");
+  assert.ok(!a.run("taskList(Infinity,'university')").includes('Sprawozdanie'));
+});
+test('preparation statuses and dashboard counts distinguish unchecked, pending and completed',()=>{
+  const a=app();
+  a.run("state.profile={wat_group:'WCY25KY2S1'};state.official=Array.from({length:4},(_,i)=>({id:String(i),title:'Zajęcia '+i,type:'Laboratorium',date:localDate(addDays(new Date(),1)),start_time:'08:00',end_time:'09:35'}));state.preparations=state.official.slice(1).map((e,i)=>({occurrence_key:occurrenceKey(e),required:i!==2,completed:i===1}));state.tasks=[{category:'university',completed:false},{category:'personal',completed:false},{category:'personal',completed:true}]");
+  const count=JSON.parse(a.run('JSON.stringify(dashboardCounts())'));
+  assert.deepEqual(count,{check:1,prepare:1,university:1,personal:1});
+  const html=a.run('preparationCards()');
+  for(const status of ['check','prepare','done','none'])assert.ok(html.includes('status-'+status));
+  a.run("state.preparationFilter='prepare'");
+  const filtered=a.run('preparationCards()');
+  assert.ok(filtered.includes('Zajęcia 1')&&!filtered.includes('Zajęcia 0')&&!filtered.includes('Zajęcia 2'));
+  assert.ok(filtered.includes('data-preparation="1"'));
+});
+test('hidden classes affect only the current profile, calendar and preparation prompts',()=>{
+  const a=app();
+  a.run("globalThis.tomorrow=localDate(addDays(new Date(),1));state.profile={wat_group:'WCY25KY2S1',hidden_classes:[{subject:'Bazy danych',type:'Ćwiczenia'},{subject:'Język angielski',type:''}]};state.official=[['Bazy danych','Ćwiczenia'],['Bazy danych','Laboratorium'],['Bazy danych','Wykład'],['Język angielski','Ćwiczenia'],['Język obcy (II) międzywydziałowy','Ćwiczenia']].map(([title,type],i)=>({id:String(i),title,type,date:tomorrow,start_time:'08:00',end_time:'09:35'}))");
+  assert.equal(a.run('allEvents().map(e=>e.id).join()'),'1,2,4');
+  assert.equal(a.run('upcomingPreparations().map(e=>e.id).join()'),'1,4');
+  assert.equal(a.run('state.official.length'),5);
+  a.run("state.profile={wat_group:'WCY25KY2S1',hidden_classes:[]}");
+  assert.equal(a.run('allEvents().length'),5);
+});
+test('completed preparation is removed from pending count and can be reopened in demo',async()=>{
+  const a=app();
+  a.run("state.official=[{title:'Bazy',type:'Laboratorium',date:localDate(addDays(new Date(),1)),start_time:'08:00',end_time:'09:35'}];state.preparations=[{occurrence_key:occurrenceKey(state.official[0]),required:true,completed:false}]");
+  await a.run('togglePrepared(0)');
+  assert.equal(a.run('dashboardCounts().prepare'),0);
+  await a.run('togglePrepared(0)');
+  assert.equal(a.run('dashboardCounts().prepare'),1);
+});

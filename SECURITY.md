@@ -2,6 +2,9 @@
 
 - Never commit passwords, e-Dziekanat credentials, Supabase `service_role` keys,
   private tokens, signing keys, or production user records.
+- `SUPABASE_DB_URL` is an administrative database credential. Keep it only in
+  GitHub Actions secrets. Only trusted workflows from `main` may use it; it is
+  never included in the static site. Database migrations run before publication.
 - `config.js` intentionally contains no credentials. The Pages workflow can
   inject Supabase **publishable** settings from GitHub Actions repository
   variables. Publishable/anon keys are visible to every browser visitor and

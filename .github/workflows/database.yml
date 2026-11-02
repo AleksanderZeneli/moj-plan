@@ -1,0 +1,47 @@
+name: Migracje bazy Supabase
+on:
+  workflow_dispatch:
+    inputs:
+      apply_owner_filters:
+        description: 'Jednorazowo ukryj wskazane zajęcia, tylko gdy istnieje dokładnie jedno konto'
+        type: boolean
+        default: false
+  workflow_call:
+permissions:
+  contents: read
+concurrency:
+  group: supabase-production-migrations
+  cancel-in-progress: false
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Sprawdź dostęp do bazy
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo '::error::Dodaj sekret repozytorium SUPABASE_DB_URL z połączeniem Session pooler do bazy.'
+            exit 1
+          fi
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Zastosuj niewykonane migracje, zachowując dane
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: supabase db push --db-url "$SUPABASE_DB_URL" --yes
+      - name: Przygotuj klienta SQL do jednorazowej zmiany profilu
+        if: github.event_name == 'workflow_dispatch' && inputs.apply_owner_filters == true
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+      - name: Zastosuj zamówione filtry do jedynego konta
+        if: github.event_name == 'workflow_dispatch' && inputs.apply_owner_filters == true
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PGSSLMODE: require
+        run: psql "$SUPABASE_DB_URL" --set ON_ERROR_STOP=on --file tools/apply_owner_class_filters.sql

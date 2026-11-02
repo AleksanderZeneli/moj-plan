@@ -51,3 +51,4 @@ jobs:
     needs: refresh
     if: needs.refresh.outputs.changed == 'true'
     uses: ./.github/workflows/pages.yml
+    secrets: inherit

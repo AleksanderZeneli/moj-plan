@@ -4,14 +4,18 @@ on:
   workflow_call:
   push:
     branches: [main]
-    paths: ['index.html', 'app.js', 'styles.css', 'sw.js', 'manifest.webmanifest', 'icon.svg', 'data/**', 'tools/build_public_config.mjs', '.github/workflows/pages.yml']
+    paths: ['index.html', 'app.js', 'styles.css', 'sw.js', 'manifest.webmanifest', 'icon.svg', 'data/**', 'tools/build_public_config.mjs', 'supabase/migrations/**', '.github/workflows/pages.yml', '.github/workflows/database.yml']
 permissions:
   contents: read
 concurrency:
   group: github-pages
   cancel-in-progress: false
 jobs:
+  database:
+    uses: ./.github/workflows/database.yml
+    secrets: inherit
   publish:
+    needs: database
     runs-on: ubuntu-latest
     permissions:
       contents: read
