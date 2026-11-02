@@ -6,7 +6,7 @@ import webpush from 'npm:web-push@3.6.7';
 type Subscription = { id: string; user_id: string; endpoint: string; p256dh: string; auth: string };
 type Profile = { user_id: string; wat_group: string; hidden_classes: { subject: string; type: string }[] | null };
 type Lab = { id: string; user_id: string; subject: string; next_date: string; remind_days: number; repeat_weekly: boolean; reviewed_for_date: string | null };
-type Task = { id: string; user_id: string; due_date: string | null; completed: boolean };
+type Task = { id: string; user_id: string; due_date: string | null; completed: boolean; recurrence: string; last_completed_on: string | null };
 type Answer = { user_id: string; occurrence_key: string };
 type Reminder = { key: string; title: string; body: string; tag: string };
 
@@ -61,7 +61,7 @@ Deno.serve(async request=>{
     supabase.from('push_subscriptions').select('id,user_id,endpoint,p256dh,auth').limit(1000),
     supabase.from('profiles').select('user_id,wat_group,hidden_classes').limit(1000),
     supabase.from('labs').select('id,user_id,subject,next_date,remind_days,repeat_weekly,reviewed_for_date').limit(1000),
-    supabase.from('tasks').select('id,user_id,due_date,completed').eq('completed',false).limit(1000),
+    supabase.from('tasks').select('id,user_id,due_date,completed,recurrence,last_completed_on').limit(1000),
     supabase.from('class_preparations').select('user_id,occurrence_key').limit(1000),
   ]);
   const failures=[subscriptions,profiles,labs,tasks,answers].filter(result=>result.error);
@@ -85,6 +85,12 @@ Deno.serve(async request=>{
     append(lab.user_id,{key:`lab:${lab.id}:${date}`,title:'Przygotowanie do laboratorium',body:'Czy trzeba coś zrobić lub czegoś się nauczyć przed najbliższymi zajęciami?',tag:'moj-plan-lab'});
   }
   for(const task of ownTasks){
+    if(task.recurrence==='daily'){
+      if(task.last_completed_on===today||(task.due_date&&task.due_date>today))continue;
+      append(task.user_id,{key:`task-daily:${task.id}:${today}`,title:'Codzienne zadanie',body:'Masz dziś zadanie do wykonania. Zajrzyj do listy w aplikacji.',tag:'moj-plan-task'});
+      continue;
+    }
+    if(task.completed)continue;
     if(!task.due_date||task.due_date<today||task.due_date>tomorrow)continue;
     append(task.user_id,{key:`task:${task.id}:${task.due_date}`,title:'Zbliża się termin zadania',body:task.due_date===today?'Masz zadanie na dziś. Sprawdź listę w aplikacji.':'Masz zadanie z terminem na jutro.',tag:'moj-plan-task'});
   }

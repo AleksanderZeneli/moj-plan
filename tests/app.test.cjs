@@ -84,6 +84,29 @@ test('university and personal lists stay separate, including old tasks without a
   a.run("state.tasks[0].category='personal'");
   assert.ok(!a.run("taskList(Infinity,'university')").includes('Sprawozdanie'));
 });
+test('daily tasks complete only today and return tomorrow in Warsaw',()=>{
+  const a=app();
+  assert.equal(a.run("warsawToday(new Date('2026-11-02T22:59:00Z'))"),'2026-11-02');
+  assert.equal(a.run("warsawToday(new Date('2026-11-02T23:01:00Z'))"),'2026-11-03');
+  a.run("globalThis.daily={id:'daily',title:'Ćwicz',category:'personal',recurrence:'daily',completed:false,due_date:null,last_completed_on:null};daily=taskToggle(daily,true,'2026-11-02');state.tasks=[daily]");
+  assert.equal(a.run("taskCompleted(daily,'2026-11-02')"),true);
+  assert.equal(a.run("taskCompleted(daily,'2026-11-03')"),false);
+  assert.equal(a.run("daily.completed"),false);
+  assert.equal(a.run("taskToggle(daily,false,'2026-11-02').last_completed_on"),null);
+  assert.equal(a.run("taskAvailable({...daily,due_date:'2026-11-04'},'2026-11-03')"),false);
+  assert.equal(a.run("taskAvailable({...daily,due_date:'2026-11-04'},'2026-11-04')"),true);
+});
+test('daily tasks display recurrence and filter by completion for the current day',()=>{
+  const a=app();
+  a.run("state.tasks=[{id:'d',title:'Codzienna nauka',category:'personal',recurrence:'daily',last_completed_on:warsawToday(),completed:false},{id:'o',title:'Jednorazowe',category:'personal',completed:true}];state.filter='done'");
+  const done=a.run("taskList(Infinity,'personal')");
+  assert.ok(done.includes('Codzienna nauka')&&done.includes('Jednorazowe')&&done.includes('Dziś zrobione'));
+  a.run("state.filter='active'");
+  assert.ok(!a.run("taskList(Infinity,'personal')").includes('Codzienna nauka'));
+  a.run("state.tasks[0].last_completed_on='2020-01-01'");
+  const active=a.run("taskList(Infinity,'personal')");
+  assert.ok(active.includes('Codzienna nauka')&&active.includes('Codziennie')&&!active.includes('Jednorazowe'));
+});
 test('preparation statuses and dashboard counts distinguish unchecked, pending and completed',()=>{
   const a=app();
   a.run("state.profile={wat_group:'WCY25KY2S1'};state.official=Array.from({length:4},(_,i)=>({id:String(i),title:'Zajęcia '+i,type:'Laboratorium',date:localDate(addDays(new Date(),1)),start_time:'08:00',end_time:'09:35'}));state.preparations=state.official.slice(1).map((e,i)=>({occurrence_key:occurrenceKey(e),required:i!==2,completed:i===1}));state.tasks=[{category:'university',completed:false},{category:'personal',completed:false},{category:'personal',completed:true}]");

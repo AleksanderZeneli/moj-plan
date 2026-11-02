@@ -29,6 +29,8 @@ create table if not exists public.tasks (
   title text not null check (length(title) between 1 and 200),
   due_date date,
   completed boolean not null default false,
+  recurrence text not null default 'none' check (recurrence in ('none','daily')),
+  last_completed_on date,
   priority text not null default 'normal' check (priority in ('normal','high')),
   notes text not null default '',
   created_at timestamptz not null default now()

@@ -16,6 +16,8 @@ Mobilna aplikacja PWA do planowania zajęć WAT, wydarzeń prywatnych, zadań z 
 
 - Synchronizacja WCY próbuje źródła uczelni, a przy blokadzie używa publicznego kalendarza PlanWAT. Starsze lub podejrzanie pomniejszone dane nie zastępują migawki.
 - **Web Push przy zamkniętej aplikacji:** kod rejestracji telefonu, bezpieczny nadawca Supabase Edge Function i harmonogram GitHub Actions są w repozytorium. Działanie na ekranie blokady wymaga jednorazowego wdrożenia funkcji i skonfigurowania kluczy VAPID — poniżej instrukcja. Do tego czasu pytania o przygotowania są widoczne w aplikacji.
+- **Codzienne zadania:** przy dodawaniu zadania wybierz „Powtarzanie → Codziennie”. Zaznaczenie „wykonane” obowiązuje tylko w dniu wykonania według czasu polskiego; następnego dnia zadanie automatycznie wraca do listy aktywnych. Opcjonalna data jest datą rozpoczęcia powtarzania.
+- **Aktualizacje na iPhonie:** skrót „Do ekranu początkowego” jest aplikacją PWA. Zmiany w GitHub Pages pojawiają się pod tym samym adresem — nie trzeba dodawać ikony ponownie. Wejdź w aplikacji w „Ustawienia → Sprawdź aktualizację i odśwież”.
 - **Powiadomienia „przypięte”**: iOS nie umożliwia aplikacjom PWA trwałego przypinania zwykłych powiadomień.
 
 ## Supabase — uruchomienie danych w chmurze
@@ -248,7 +250,8 @@ około 09:10 czasu polskiego zimą / 10:10 latem (Github Actions nie gwarantuje
 punktualności). Można też wywołać go ręcznie w Actions, aby sprawdzić wysyłkę.
 
 System wysyła jednorazowe przypomnienie na dany termin o nieukończonym zadaniu
-(dziś/jutro), o własnym laboratorium w ustawionym oknie 7/3 dni i raz na tydzień
+(dziś/jutro), codzienne przypomnienie o zadaniu powtarzanym (jeżeli nie zostało
+wykonane w danym dniu), o własnym laboratorium w ustawionym oknie 7/3 dni i raz na tydzień
 pytanie o niesprawdzone laboratoria/ćwiczenia z opublikowanego planu grupy.
 Każda subskrypcja jest powiązana z zalogowanym użytkownikiem; RLS nie pozwala
 innemu kontu jej odczytać. Powiadomienia nie zawierają prywatnych notatek.
