@@ -1,0 +1,23 @@
+name: Synchronizuj oficjalny plan WCY
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 5,17 * * *'
+permissions:
+  contents: write
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Pobierz bezpośrednio z WCY
+        run: python tools/import_wcy.py --group WCY25KY2S1 --output data/WCY25KY2S1.json
+      - name: Zapisz plan, jeśli się zmienił
+        run: |
+          git config user.name "moj-plan-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/WCY25KY2S1.json
+          git diff --cached --quiet || (git commit -m "Aktualizacja planu WCY25KY2S1" && git push)
