@@ -7,8 +7,7 @@ on:
         required: true
         default: 'WCY25KY2S1'
         type: string
-  schedule:
-    - cron: '17 5,17 * * *'
+  # Harmonogram wznowimy po usunięciu blokady HTTP 403 przez WCY.
 permissions:
   contents: write
 jobs:
