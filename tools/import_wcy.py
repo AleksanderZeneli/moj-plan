@@ -97,18 +97,31 @@ def prepare_update(result, previous_path, term_start):
     return True
 
 
+def decode_saved_html(path):
+    """Accept browser-saved UTF-8 and older Windows-1250 HTML exports."""
+    raw = path.read_bytes()
+    for encoding in ("utf-8-sig", "utf-8", "windows-1250"):
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            pass
+    raise ValueError("Cannot decode HTML file as UTF-8 or Windows-1250")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--group", default="WCY25KY2S1")
     parser.add_argument("--html", type=Path, help="Optional officially saved HTML file for offline verification")
-    parser.add_argument("--output", type=Path, default=Path("data/WCY25KY2S1.json"))
+    parser.add_argument("--output", type=Path, help="JSON destination (defaults to data/GROUP.json)")
     parser.add_argument("--term-start", default="2026-09-01", help="Ignore lessons before this YYYY-MM-DD date")
     args = parser.parse_args()
     if not GROUP.fullmatch(args.group):
         parser.error("Invalid WCY group code")
+    if args.output is None:
+        args.output = Path("data") / (args.group.upper() + ".json")
     datetime.strptime(args.term_start, "%Y-%m-%d")
     if args.html:
-        page = args.html.read_text(encoding="utf-8")
+        page = decode_saved_html(args.html)
     else:
         req = urllib.request.Request(BASE.format(args.group), headers={"User-Agent": "MojPlan/1.0 (+personal calendar; contact via repository)"})
         try:
