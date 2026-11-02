@@ -69,7 +69,7 @@ test('preparation statuses and dashboard counts distinguish unchecked, pending a
   const a=app();
   a.run("state.profile={wat_group:'WCY25KY2S1'};state.official=Array.from({length:4},(_,i)=>({id:String(i),title:'Zajęcia '+i,type:'Laboratorium',date:localDate(addDays(new Date(),1)),start_time:'08:00',end_time:'09:35'}));state.preparations=state.official.slice(1).map((e,i)=>({occurrence_key:occurrenceKey(e),required:i!==2,completed:i===1}));state.tasks=[{category:'university',completed:false},{category:'personal',completed:false},{category:'personal',completed:true}]");
   const count=JSON.parse(a.run('JSON.stringify(dashboardCounts())'));
-  assert.deepEqual(count,{check:1,prepare:1,university:1,personal:1});
+  assert.deepEqual(count,{check:1,prepare:1,university:1,personal:1,events:0});
   const html=a.run('preparationCards()');
   for(const status of ['check','prepare','done','none'])assert.ok(html.includes('status-'+status));
   a.run("state.preparationFilter='prepare'");
@@ -93,4 +93,21 @@ test('completed preparation is removed from pending count and can be reopened in
   assert.equal(a.run('dashboardCounts().prepare'),0);
   await a.run('togglePrepared(0)');
   assert.equal(a.run('dashboardCounts().prepare'),1);
+});
+test('manual events tab excludes official timetable and handles weekly events across DST',()=>{
+  const a=app();
+  a.run("state.events=[{id:'past',title:'Minione spotkanie',date:'2026-10-01',start_time:'08:00',end_time:'09:00',recurrence:'none'},{id:'weekly',title:'Trening',date:'2026-10-19',start_time:'17:00',end_time:'18:00',recurrence:'weekly'}];state.official=[{id:'wcy:a',title:'Oficjalny wykład',date:'2026-11-03',start_time:'08:00',end_time:'09:35',source:'wcy'}]");
+  assert.equal(a.run("nextEventDate(state.events[1],'2026-10-26')"),'2026-10-26');
+  assert.equal(a.run("manualEventOccurrences(toDate('2026-11-02')).find(e=>e.id==='weekly').nextOccurrence"),'2026-11-02');
+  const html=a.run("state.eventFilter='all';eventsView()");
+  assert.ok(html.includes('Trening')&&html.includes('Minione spotkanie'));
+  assert.ok(!html.includes('Oficjalny wykład'));
+  assert.ok(html.includes('data-edit="events:weekly"')&&html.includes('data-open-event="weekly"'));
+  assert.ok(!a.run("state.eventFilter='upcoming';eventsView()").includes('Minione spotkanie'));
+});
+test('finished one-off events are past and weekly events advance after their end time',()=>{
+  const a=app();
+  a.run("state.events=[{id:'one',title:'Spotkanie',date:'2026-11-02',start_time:'08:00',end_time:'09:00',recurrence:'none'},{id:'weekly',title:'Trening',date:'2026-10-26',start_time:'08:00',end_time:'09:00',recurrence:'weekly'}]");
+  assert.equal(a.run("manualEventOccurrences(toDate('2026-11-02')).find(e=>e.id==='one').nextOccurrence"),null);
+  assert.equal(a.run("manualEventOccurrences(toDate('2026-11-02')).find(e=>e.id==='weekly').nextOccurrence"),'2026-11-09');
 });

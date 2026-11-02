@@ -29,11 +29,22 @@ def span(markup, cls):
 
 
 def block_times(page):
+    """Keep each day's clock: WCY uses different weekday and weekend slots."""
     times = {}
-    for match in re.finditer(r'<div\s+class="block_nr (block\d+)"[^>]*>(.*?)</div>', page, re.S):
-        a, b = span(match.group(2), "hr1"), span(match.group(2), "hr2")
-        if re.fullmatch(r"\d{2}:\d{2}", a) and re.fullmatch(r"\d{2}:\d{2}", b):
-            times[match.group(1)] = (a, b)
+    days = {"pon": 0, "wt": 1, "sr": 2, "czw": 3, "pt": 4, "sob": 5, "nd": 6}
+    sections = list(re.finditer(r'<div\s+class="day_v1\s+(pon|wt|sr|czw|pt|sob|nd)"[^>]*>', page))
+    fragments = [(days[section.group(1)], page[section.end():sections[i+1].start() if i+1<len(sections) else len(page)]) for i, section in enumerate(sections)] if sections else [(None, page)]
+    for weekday, fragment in fragments:
+        for match in re.finditer(r'<div\s+class="block_nr (block\d+)"[^>]*>(.*?)</div>', fragment, re.S):
+            a, b = span(match.group(2), "hr1"), span(match.group(2), "hr2")
+            if re.fullmatch(r"\d{2}:\d{2}", a) and re.fullmatch(r"\d{2}:\d{2}", b):
+                start, end = datetime.strptime(a, "%H:%M"), datetime.strptime(b, "%H:%M")
+                if end <= start:
+                    raise ValueError("Invalid lesson block time range")
+                key = (weekday, match.group(1))
+                if key in times and times[key] != (a, b):
+                    raise ValueError("Ambiguous block times; weekday context required")
+                times[key] = (a, b)
     return times
 
 
@@ -54,9 +65,12 @@ def parse(page, group):
         raw = match.group(1)
         date = span(raw, "date").replace("_", "-")
         block = span(raw, "block_id")
-        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date) or block not in times:
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
             continue
-        datetime.strptime(date, "%Y-%m-%d")
+        weekday = datetime.strptime(date, "%Y-%m-%d").weekday()
+        hours = times.get((weekday, block)) or times.get((None, block))
+        if not hours:
+            raise ValueError("Lesson block times missing for its weekday; previous plan preserved")
         name_match = re.search(r'<span\s+class="name"[^>]*>(.*?)</span>', raw, re.S)
         parts = [plain(piece) for piece in re.split(r"<br\s*/?>", name_match.group(1))] if name_match else []
         details = span(raw, "info")
@@ -69,7 +83,7 @@ def parse(page, group):
         else:
             subject, lesson_type, instructor = details, "", ""
         subject = subject.strip(" -") or (parts[0] if parts else "Zajęcia")
-        start, end = times[block]
+        start, end = hours
         identity = "|".join((group, date, block, subject, lesson_type, parts[2] if len(parts) > 2 else "", instructor))
         event_id = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:20]
         events.append({"id": f"wcy:{event_id}", "title": subject,

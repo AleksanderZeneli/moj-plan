@@ -137,6 +137,10 @@ projektów wcześniej skonfigurowanych ręcznie.
 - **Na zajęcia**: osobna lista zadań uczelnianych oraz przygotowania do zajęć z planu.
 - **Poza uczelnią**: zadania prywatne. Starsze zadania trafiają tutaj; kategorię można
   zmienić podczas edycji zadania.
+- **Wydarzenia**: osobna zakładka na ręczne wpisy w kalendarzu z datą i godziną.
+  Pokazuje wydarzenia nadchodzące, minione i powtarzalne; pozwala je edytować oraz
+  otworzyć wybrany dzień w kalendarzu. Kafelek liczy ręczne wydarzenia z najbliższych
+  siedmiu dni, bez oficjalnych zajęć i zadań z deadline'em.
 - Kafelki na ekranie głównym prowadzą do odpowiednich list i filtrów.
 - Niebieski oznacza **Do sprawdzenia**, pomarańczowy **Do przygotowania**,
   zielony **Przygotowane** lub **Bez przygotowania**. Status jest też zapisany tekstem.
@@ -148,6 +152,10 @@ projektów wcześniej skonfigurowanych ręcznie.
 - Jednorazowa opcja `apply_owner_filters` w ręcznym workflow migracji zapisuje
   wskazane filtry tylko wtedy, gdy baza zawiera dokładnie jedno konto. Przy wielu
   kontach kończy się bez zmiany preferencji; wtedy należy użyć własnych ustawień.
+
+Godziny WCY są odczytywane osobno dla każdego dnia tygodnia: rozkład bloków
+w weekend może różnić się od roboczego. Parser odrzuca niejednoznaczne godziny
+zamiast nadpisywać wszystkie dni ostatnią znalezioną tabelą.
 
 Walidator zachowuje poprzedni plik, gdy nowe dane nie obejmują bieżącego
 semestru lub liczba zajęć spadnie o ponad 40%. Weryfikuje również identyfikator
