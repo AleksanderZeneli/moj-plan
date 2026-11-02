@@ -1,0 +1,101 @@
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+
+const root = document.querySelector('#app');
+const configured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+let client = null;
+let session = null;
+let state = { view: 'today', date: new Date(), filter: 'all', events: [], tasks: [], labs: [], profile: null, demo: !configured };
+const dayMs = 86400000;
+const pad = n => String(n).padStart(2, '0');
+const localDate = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const toDate = s => new Date(`${s}T12:00:00`);
+const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate()+n, 12);
+const fmt = (s, options={day:'numeric', month:'short'}) => new Intl.DateTimeFormat('pl-PL',options).format(typeof s==='string'?toDate(s):s);
+const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uuid = () => crypto.randomUUID();
+let toastTimer;
+
+function notify(message){ document.querySelector('.toast')?.remove();const el=document.createElement('div');el.className='toast';el.textContent=message;document.body.append(el);clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.remove(),3600); }
+function starterData(){
+  const today=new Date(), tomorrow=localDate(addDays(today,1)), next=localDate(addDays(today,5));
+  state.events=[{id:uuid(),title:'Programowanie — laboratorium',kind:'university',subject:'Programowanie',date:tomorrow,start_time:'08:00',end_time:'09:35',location:'Sala 213',recurrence:'weekly'},{id:uuid(),title:'Trening',kind:'personal',subject:'',date:localDate(today),start_time:'17:00',end_time:'18:00',location:'',recurrence:'none'}];
+  state.tasks=[{id:uuid(),title:'Oddać sprawozdanie z fizyki',due_date:next,completed:false,priority:'high',notes:''}];
+  state.labs=[{id:uuid(),subject:'Programowanie',next_date:tomorrow,repeat_weekly:true,preparation:'Powtórzyć wskaźniki i listy jednokierunkowe.',reviewed_for_date:null,remind_days:7}];
+}
+function activeLabs(){
+  const today=toDate(localDate(new Date()));
+  return state.labs.map(l=>{
+    let next=toDate(l.next_date);
+    if(l.repeat_weekly){while(next<today)next=addDays(next,7);}
+    return {...l,nextOccurrence:localDate(next),daysAway:Math.round((next-today)/dayMs),checked_for_next:l.reviewed_for_date===localDate(next)};
+  }).sort((a,b)=>a.nextOccurrence.localeCompare(b.nextOccurrence));
+}
+function onDate(e,date){ if(e.date===date)return true; if(e.recurrence==='weekly'&&e.date<date){const diff=Math.round((toDate(date)-toDate(e.date))/dayMs);return diff>=0&&diff%7===0;}return false; }
+async function load(){
+  if(state.demo){render();return;}
+  const uid=session.user.id;
+  const [events,tasks,labs,profiles]=await Promise.all(['events','tasks','labs','profiles'].map(table=>client.from(table).select('*').eq('user_id',uid)));
+  const failure=[events,tasks,labs,profiles].find(x=>x.error);
+  if(failure){notify('Błąd pobierania danych: '+failure.error.message);return;}
+  state.events=events.data;state.tasks=tasks.data;state.labs=labs.data;state.profile=profiles.data[0] || null;render();
+}
+async function save(table,item){
+  if(state.demo){const index=state[table].findIndex(x=>x.id===item.id);if(index<0)state[table].push(item);else state[table][index]=item;render();return true;}
+  const payload={...item,user_id:session.user.id};
+  const {error}=await client.from(table).upsert(payload);
+  if(error){notify('Nie zapisano: '+error.message);return false;}
+  await load();return true;
+}
+async function remove(table,id){
+  if(!confirm('Usunąć ten wpis?'))return;
+  if(state.demo){state[table]=state[table].filter(x=>x.id!==id);render();return;}
+  const {error}=await client.from(table).delete().eq('id',id);
+  if(error)notify(error.message);else await load();
+}
+function button(label,action=''){return `<button class="btn ${action==='primary'?'primary':'ghost'}" data-action="${action||'add'}">${label}</button>`;}
+function sidebar(){const links=[['today','◫','Dzisiaj'],['calendar','▦','Kalendarz'],['tasks','☑','Zadania'],['labs','✎','Laboratoria'],['settings','⚙','Ustawienia']];return `<aside class="sidebar"><div class="brand"><span class="brand-icon">✓</span>Mój Plan</div><nav class="nav">${links.map(([id,icon,name])=>`<button class="${state.view===id?'active':''}" data-nav="${id}">${icon}&nbsp; ${name}</button>`).join('')}</nav><div class="sidebar-foot">${state.demo?'Tryb podglądu · dane tylko w pamięci':'Prywatny plan · Supabase'}<br>WAT + życie poza uczelnią</div></aside><nav class="mobile-nav">${links.map(([id,icon,name])=>`<button class="${state.view===id?'active':''}" data-nav="${id}"><strong>${icon}</strong>${name}</button>`).join('')}</nav>`;}
+function stats(){const due=state.tasks.filter(t=>!t.completed),week=state.events.filter(e=>{const d=toDate(localDate(new Date()));return Array.from({length:7},(_,i)=>localDate(addDays(d,i))).some(x=>onDate(e,x));}).length;return `<div class="stats"><div class="card"><div class="stat-label">Zadania aktywne</div><div class="stat-value">${due.length}</div></div><div class="card"><div class="stat-label">Wydarzenia w 7 dni</div><div class="stat-value">${week}</div></div><div class="card"><div class="stat-label">Laboratoria do sprawdzenia</div><div class="stat-value">${activeLabs().filter(l=>l.daysAway<=l.remind_days&&!l.checked_for_next).length}</div></div></div>`;}
+function weekStrip(){const d=state.date, monday=addDays(d,-((d.getDay()+6)%7));return `<div class="weekstrip">${Array.from({length:7},(_,i)=>{const x=addDays(monday,i),key=localDate(x);return `<button class="day ${key===localDate(d)?'selected':''}" data-date="${key}"><small>${['pn','wt','śr','cz','pt','sb','nd'][i]}</small><strong>${x.getDate()}</strong></button>`;}).join('')}</div>`;}
+function agenda(date){const entries=state.events.filter(e=>onDate(e,date)).sort((a,b)=>a.start_time.localeCompare(b.start_time));return entries.length?entries.map(e=>`<article class="event ${e.kind==='personal'?'personal':''}"><div><h3>${esc(e.title)}</h3><p>${esc(e.location|| (e.kind==='university'?'Uczelnia':'Wydarzenie'))}${e.recurrence==='weekly'?' · co tydzień':''}</p><button class="text-btn" data-edit="events:${e.id}">Edytuj</button></div><div class="event-time">${esc(e.start_time.slice(0,5))}–${esc(e.end_time.slice(0,5))}</div></article>`).join(''):'<div class="empty">Brak zaplanowanych wydarzeń w tym dniu.</div>';}
+function taskList(limit=Infinity){let items=[...state.tasks].filter(t=>state.filter==='all'||(state.filter==='active'?!t.completed:t.completed));items.sort((a,b)=>Number(a.completed)-Number(b.completed)||(a.due_date||'9999').localeCompare(b.due_date||'9999'));if(!items.length)return '<div class="empty">Nie masz tu jeszcze zadań.</div>';return items.slice(0,limit).map(t=>`<div class="task ${t.completed?'done':''}"><input type="checkbox" data-check="${t.id}" ${t.completed?'checked':''} aria-label="Ukończ: ${esc(t.title)}"><div style="flex:1"><div class="task-title">${esc(t.title)}</div><div class="task-meta">${t.due_date?'Deadline: '+fmt(t.due_date):'Bez deadline’u'}${t.priority==='high'?' · Ważne':''}${t.notes?' · '+esc(t.notes):''}</div><button class="text-btn" data-edit="tasks:${t.id}">Edytuj</button></div>${t.due_date?`<span class="pill ${!t.completed&&t.due_date<localDate(new Date())?'red':'warning'}">${fmt(t.due_date)}</span>`:''}</div>`).join('');}
+function labCards(){const labs=activeLabs();if(!labs.length)return '<div class="empty">Dodaj laboratorium i ustaw termin kolejnych zajęć.</div>';return labs.map(l=>`<article class="lab"><div class="row"><h3>${esc(l.subject)}</h3><span class="pill ${l.daysAway<=7&&!l.checked_for_next?'warning':''}">${fmt(l.nextOccurrence)}</span></div><div class="small muted">${l.repeat_weekly?'Co tydzień · ':''}${l.daysAway===0?'Dzisiaj':`Za ${l.daysAway} dni`}</div><p>${esc(l.preparation||'Brak notatek. Czy trzeba coś przygotować na te zajęcia?')}</p><div class="lab-actions"><button class="text-btn" data-review="${l.id}">${l.checked_for_next?'✓ Przygotowania sprawdzone':'Czy trzeba się przygotować? →'}</button><button class="text-btn" data-edit="labs:${l.id}">Edytuj</button></div></article>`).join('');}
+function promptCard(){const pending=activeLabs().filter(l=>l.daysAway<=l.remind_days&&!l.checked_for_next);if(!pending.length)return '';return `<div class="banner"><strong>✎ Przygotowania do laboratoriów</strong><p>Masz ${pending.length} ${pending.length===1?'laboratorium':'laboratoria'} wymagające sprawdzenia przygotowań. Czy trzeba wykonać zadanie, przeczytać materiały albo coś zabrać?</p><button class="btn primary" data-nav="labs">Sprawdź przygotowania</button></div>`;}
+function todayView(){const date=localDate(state.date);return `${stats()}${promptCard()}<div class="layout"><div class="stack"><section class="card"><div class="section-head"><h2>Plan dnia · ${fmt(state.date,{weekday:'long',day:'numeric',month:'long'})}</h2><button class="btn ghost" data-add="events">+ Wydarzenie</button></div>${weekStrip()}${agenda(date)}</section></div><div class="stack"><section class="card"><div class="section-head"><h2>Twoje zadania</h2><button class="btn ghost" data-add="tasks">+ Zadanie</button></div>${taskList(5)}</section><section class="card"><div class="section-head"><h2>Następne laboratoria</h2><button class="btn ghost" data-add="labs">+ Notatka</button></div>${labCards()}</section></div></div>`;}
+function calendarView(){return `<section class="card"><div class="section-head"><h2>Kalendarz</h2><div class="top-actions"><button class="btn ghost" data-shift="-7">← tydzień</button><button class="btn ghost" data-shift="7">tydzień →</button><button class="btn primary" data-add="events">+ Wydarzenie</button></div></div>${weekStrip()}<div class="section-head"><h2>${fmt(state.date,{weekday:'long',day:'numeric',month:'long'})}</h2></div>${agenda(localDate(state.date))}</section>`;}
+function tasksView(){return `<section class="card"><div class="section-head"><h2>Zadania i deadline’y</h2><button class="btn primary" data-add="tasks">+ Nowe zadanie</button></div><div class="filters">${[['all','Wszystkie'],['active','Do zrobienia'],['done','Wykonane']].map(([id,label])=>`<button class="${state.filter===id?'active':''}" data-filter="${id}">${label}</button>`).join('')}</div>${taskList()}</section>`;}
+function labsView(){return `${promptCard()}<section class="card"><div class="section-head"><h2>Przygotowanie na laboratoria</h2><button class="btn primary" data-add="labs">+ Dodaj laboratorium</button></div><p class="muted">Zapisz, czego trzeba się nauczyć lub co przynieść. Na 7 dni przed kolejnym terminem aplikacja zapyta, czy wszystko sprawdziłeś.</p>${labCards()}</section>`;}
+function settingsView(){return `<section class="card"><div class="section-head"><h2>Ustawienia</h2></div><p><strong>Grupa WAT:</strong> ${esc(state.profile?.wat_group||'Nie wybrano')}</p><p class="muted small">Importer zajęć WAT zostanie podłączony po potwierdzeniu kodu grupy i źródła danych. Nie pokazujemy fikcyjnego planu jako oficjalnego.</p><button class="btn ghost" data-action="group">Ustaw grupę</button><hr style="border:0;border-top:1px solid #e8eef3;margin:24px 0"><p><strong>Powiadomienia systemowe</strong></p><p class="muted small">Tygodniowe pytania działają w aplikacji. Powiadomienia przy zamkniętej aplikacji wymagają osobnego backendu Web Push i zgody na iPhonie.</p>${state.demo?'<p class="banner warn">Tryb demonstracyjny: zmiany znikną po odświeżeniu. Aby zachowywać dane wyłącznie w chmurze, skonfiguruj Supabase.</p>':`<p class="muted">Zalogowano jako ${esc(session.user.email||'użytkownik')}</p><button class="btn danger" data-action="logout">Wyloguj</button>`}</section>`;}
+function render(){const names={today:'Dzień dobry!',calendar:'Twój kalendarz',tasks:'Lista zadań',labs:'Laboratoria',settings:'Ustawienia'};root.innerHTML=`<div class="shell">${sidebar()}<main class="main"><header class="topbar"><div><p class="eyebrow">Twoja przestrzeń</p><h1>${names[state.view]}</h1><div class="muted small">${fmt(new Date(),{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div></div><div class="top-actions">${state.demo?'<span class="pill warning">DEMO</span>':''}<button class="btn primary" data-add="tasks">+ Dodaj</button></div></header>${{today:todayView,calendar:calendarView,tasks:tasksView,labs:labsView,settings:settingsView}[state.view]()}</main></div>`;}
+function authScreen(){root.innerHTML=`<div class="auth card"><div class="brand" style="color:#19395b;margin:0 0 25px"><span class="brand-icon">✓</span>Mój Plan</div><h1>Zaloguj się</h1><p class="muted">Prywatny kalendarz i zadania zapisane w chmurze.</p><form id="auth-form" class="form"><label>E-mail<input type="email" name="email" autocomplete="email" required></label><label>Hasło<input type="password" name="password" minlength="6" autocomplete="current-password" required></label><button class="btn primary" type="submit">Zaloguj</button><button type="button" class="btn ghost" id="signup">Utwórz konto</button></form><p class="small muted">Nie przechowujemy zadań w lokalnej bazie telefonu.</p></div>`;}
+function field(name,label,type='text',value='',extra=''){return `<label>${label}<input name="${name}" type="${type}" value="${esc(value)}" ${extra}></label>`;}
+function modal(table,id=null){const current=state[table].find(x=>x.id===id)||{},editing=Boolean(id),head={events:'wydarzenie',tasks:'zadanie',labs:'laboratorium'}[table];let fields='';
+  if(table==='events')fields=`${field('title','Nazwa','text',current.title,'required')}${field('date','Data','date',current.date||localDate(state.date),'required')}<div class="row">${field('start_time','Od','time',current.start_time?.slice(0,5)||'08:00','required')}${field('end_time','Do','time',current.end_time?.slice(0,5)||'09:30','required')}</div>${field('location','Sala / miejsce','text',current.location)}<label>Rodzaj<select name="kind"><option value="university" ${current.kind==='university'?'selected':''}>Zajęcia WAT</option><option value="personal" ${current.kind==='personal'?'selected':''}>Prywatne wydarzenie</option></select></label><label>Powtarzanie<select name="recurrence"><option value="none">Bez powtarzania</option><option value="weekly" ${current.recurrence==='weekly'?'selected':''}>Co tydzień</option></select></label>`;
+  if(table==='tasks')fields=`${field('title','Co trzeba zrobić?','text',current.title,'required')}${field('due_date','Deadline (opcjonalnie)','date',current.due_date||'')}<label>Priorytet<select name="priority"><option value="normal">Zwykły</option><option value="high" ${current.priority==='high'?'selected':''}>Ważny</option></select></label><label>Notatki<textarea name="notes">${esc(current.notes)}</textarea></label>`;
+  if(table==='labs')fields=`${field('subject','Przedmiot','text',current.subject,'required')}${field('next_date','Termin najbliższego laboratorium','date',current.next_date||localDate(addDays(new Date(),7)),'required')}<label>Co przygotować / z czego się nauczyć?<textarea name="preparation" placeholder="Np. przejrzeć instrukcję, rozwiązać zadania, zabrać sprawozdanie...">${esc(current.preparation)}</textarea></label><label>Przypomnij z wyprzedzeniem<select name="remind_days"><option value="7" ${current.remind_days!==3?'selected':''}>7 dni</option><option value="3" ${current.remind_days===3?'selected':''}>3 dni</option></select></label><label><input type="checkbox" name="repeat_weekly" ${current.repeat_weekly!==false?'checked':''} style="width:auto"> Powtarzaj co tydzień</label>`;
+  const overlay=document.createElement('div');overlay.className='dialog-backdrop';overlay.innerHTML=`<div class="dialog"><div class="section-head"><h2>${editing?'Edytuj':'Dodaj'} ${head}</h2><button class="btn ghost" data-close>✕</button></div><form id="entry-form" class="form">${fields}<div class="row">${editing?`<button type="button" class="btn danger" id="delete-entry">Usuń</button>`:'<span></span>'}<div class="top-actions"><button type="button" class="btn ghost" data-close>Anuluj</button><button type="submit" class="btn primary">Zapisz</button></div></div></form></div>`;document.body.append(overlay);
+  overlay.addEventListener('click',e=>{if(e.target===overlay||e.target.closest('[data-close]'))overlay.remove();});
+  overlay.querySelector('#delete-entry')?.addEventListener('click',async()=>{await remove(table,id);overlay.remove();});
+  overlay.querySelector('form').addEventListener('submit',async e=>{e.preventDefault();const data=new FormData(e.currentTarget);const item={...current,id:current.id||uuid()};for(const [key,val] of data.entries())item[key]=val; if(table==='events'&&item.end_time<=item.start_time){notify('Koniec wydarzenia musi być później niż początek.');return;}if(table==='tasks'){item.completed=current.completed||false;item.due_date=item.due_date||null;}if(table==='labs'){item.repeat_weekly=data.has('repeat_weekly');item.remind_days=Number(item.remind_days);item.reviewed_for_date=current.next_date===item.next_date?(current.reviewed_for_date||null):null;}if(await save(table,item)){overlay.remove();notify('Zapisano ✓');}});
+}
+async function reviewLab(id){const lab=activeLabs().find(l=>l.id===id);if(!lab)return;const answer=confirm(`Czy masz wszystko przygotowane na ${lab.subject}?\n\nOK — tak, sprawdzone.\nAnuluj — jeszcze muszę się przygotować.`);if(answer){const {nextOccurrence,daysAway,checked_for_next,...record}=lab;await save('labs',{...record,reviewed_for_date:nextOccurrence});notify('Oznaczono jako sprawdzone.');}else modal('labs',id);}
+async function setGroup(){const value=prompt('Kod grupy WAT (np. WCY25...):',state.profile?.wat_group||'');if(value===null)return;if(state.demo){state.profile={wat_group:value};render();return;}const {error}=await client.from('profiles').upsert({user_id:session.user.id,wat_group:value});if(error)notify(error.message);else await load();}
+document.addEventListener('click',async e=>{const el=e.target.closest('[data-nav],[data-date],[data-add],[data-edit],[data-check],[data-review],[data-filter],[data-shift],[data-action]');if(!el)return;
+  if(el.dataset.nav){state.view=el.dataset.nav;render();}
+  if(el.dataset.date){state.date=toDate(el.dataset.date);render();}
+  if(el.dataset.add)modal(el.dataset.add);
+  if(el.dataset.edit){const [table,id]=el.dataset.edit.split(':');modal(table,id);}
+  if(el.dataset.filter){state.filter=el.dataset.filter;render();}
+  if(el.dataset.shift){state.date=addDays(state.date,Number(el.dataset.shift));render();}
+  if(el.dataset.review)await reviewLab(el.dataset.review);
+  if(el.dataset.check){const t=state.tasks.find(t=>t.id===el.dataset.check);if(t)await save('tasks',{...t,completed:el.checked});}
+  if(el.dataset.action==='group')await setGroup();
+  if(el.dataset.action==='logout'){await client.auth.signOut();session=null;state.events=[];state.tasks=[];state.labs=[];authScreen();}
+});
+document.addEventListener('submit',async e=>{if(e.target.id!=='auth-form')return;e.preventDefault();const form=new FormData(e.target);const {data,error}=await client.auth.signInWithPassword({email:form.get('email'),password:form.get('password')});if(error)notify(error.message);else{session=data.session;await load();}});
+document.addEventListener('click',async e=>{if(e.target.id!=='signup')return;const form=new FormData(document.querySelector('#auth-form'));const {error}=await client.auth.signUp({email:form.get('email'),password:form.get('password')});notify(error?error.message:'Sprawdź skrzynkę pocztową i potwierdź adres e-mail.');});
+async function start(){
+  if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  if(!configured){starterData();render();return;}
+  try {const {createClient}=await import('https://esm.sh/@supabase/supabase-js@2.49.10');client=createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true}});const {data}=await client.auth.getSession();session=data.session;if(session)await load();else authScreen();client.auth.onAuthStateChange((event,next)=>{if(event==='SIGNED_OUT'){session=null;authScreen();}else if(event==='SIGNED_IN'&&!session){session=next;load();}});}catch(err){root.innerHTML='<div class="auth card"><h1>Nie udało się połączyć</h1><p>Sprawdź konfigurację Supabase i połączenie z internetem.</p></div>';console.error(err);}
+}
+start();
