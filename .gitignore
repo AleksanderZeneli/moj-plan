@@ -1,0 +1,13 @@
+# Local secrets, credentials and machine-specific files must never be committed.
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.pfx
+*.key
+config.local.js
+__pycache__/
+*.pyc
+node_modules/
+dist/
