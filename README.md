@@ -15,7 +15,7 @@ Mobilna aplikacja PWA do planowania zajęć WAT, wydarzeń prywatnych, zadań z 
 ## Czego jeszcze nie ma
 
 - Synchronizacja WCY próbuje źródła uczelni, a przy blokadzie używa publicznego kalendarza PlanWAT. Starsze lub podejrzanie pomniejszone dane nie zastępują migawki.
-- **Web Push przy zamkniętej aplikacji:** plik `sw.js` potrafi odebrać push, ale nie ma jeszcze serwera harmonogramującego wysyłkę ani rejestracji subskrypcji. Pytania o laboratorium w v0.1 są widoczne **w aplikacji**, nie na ekranie blokady.
+- **Web Push przy zamkniętej aplikacji:** kod rejestracji telefonu, bezpieczny nadawca Supabase Edge Function i harmonogram GitHub Actions są w repozytorium. Działanie na ekranie blokady wymaga jednorazowego wdrożenia funkcji i skonfigurowania kluczy VAPID — poniżej instrukcja. Do tego czasu pytania o przygotowania są widoczne w aplikacji.
 - **Powiadomienia „przypięte”**: iOS nie umożliwia aplikacjom PWA trwałego przypinania zwykłych powiadomień.
 
 ## Supabase — uruchomienie danych w chmurze
@@ -32,7 +32,9 @@ Gdy `config.js` jest pusty, aplikacja startuje w **trybie demo**. Dane demonstra
 ## Uruchomienie lokalne
 
 Kalendarz oferuje widok **Cały tydzień** (poniedziałek–niedziela na osi godzin)
-oraz **Dzień**. Na telefonie tygodniową siatkę można przewijać w poziomie.
+oraz **Dzień**. Na telefonie cały tydzień mieści się na szerokości ekranu
+jako siedem wierszy z podglądem godzin i zajęć; dotknij dnia, aby zobaczyć
+szczegółowy plan. Nie trzeba przewijać osobnego kalendarza w poziomie i pionie.
 Nakładające się wydarzenia są wyświetlane obok siebie; deadline'y pozostają na liście zadań.
 
 Testy interfejsu i obsługi kont (bez instalacji paczek):
@@ -49,9 +51,10 @@ W repozytorium: **Settings → Pages → Build and deployment → GitHub Actions
 ## Architektura
 
 - `index.html`, `styles.css`, `app.js` — interfejs i logika.
-- `config.js` — publiczne dane konfiguracyjne Supabase.
+- `config.js` — publiczne dane konfiguracyjne Supabase i Web Push.
 - `sw.js`, `manifest.webmanifest`, `icon.svg` — PWA.
 - `supabase/schema.sql` — tabele i polityki bezpieczeństwa.
+- `supabase/functions/send-reminders/` — chroniona funkcja wysyłająca przypomnienia Web Push.
 
 ## Dalszy plan
 
@@ -118,7 +121,8 @@ Odpowiedź „tak/nie” i notatka dotyczą konkretnego przedmiotu, rodzaju, dat
 godziny oraz grupy. Zmiana sali lub identyfikatora źródłowego zachowuje odpowiedź.
 Przesunięcie terminu powoduje nowe pytanie; stara notatka jest dostępna w sekcji
 zmienionych lub odwołanych terminów i nie jest automatycznie przepisywana.
-Pytania są widoczne w aplikacji; nie są powiadomieniami push.
+Pytania są zawsze widoczne w aplikacji. Po włączeniu osobnej usługi Web Push
+aplikacja może wysyłać także powiadomienia systemowe przy zamkniętej karcie.
 
 Migracje w `supabase/migrations/` są wykonywane przez workflow `database.yml`
 przed publikacją Pages. Wymaga on sekretu repozytorium `SUPABASE_DB_URL`
@@ -201,4 +205,57 @@ bez prawdziwego logowania i bez trwałości danych.
 Wpisanie dowolnej grupy w profilu nie oznacza jeszcze, że istnieje dla niej
 plan JSON. Importer musi najpierw wygenerować dane tej konkretnej grupy;
 przy blokadzie serwera WAT aplikacja pokazuje uczciwy komunikat o braku planu.
+
+# Powiadomienia Web Push — jednorazowa konfiguracja
+
+Powiadomienia w aplikacji (pytanie przed laboratoriami) działają od razu.
+Powiadomienia systemowe także po zamknięciu aplikacji wymagają **trzech rzeczy**:
+subskrypcji urządzenia, prywatnego serwera wysyłającego i harmonogramu.
+Wszystkie potrzebne pliki są w repo, ale **bez skonfigurowania poniższych
+sekretów wysyłka nie jest aktywna**. Domyślnie zaplanowany workflow jest
+wyłączony, aby nie generować błędów i e-maili.
+
+1. **Migracja**: workflow `database.yml` wdraża
+   `supabase/migrations/20261102210000_web_push.sql`, tworząc zabezpieczoną RLS
+   tabelę `push_subscriptions` i niedostępną klientom tabelę
+   `notification_deliveries`. Najpierw sprawdź w Supabase, czy migracja się
+   wykonała. Nie wklejaj jej ponownie jako osobnego schematu.
+2. **Klucze Web Push**: na swoim komputerze uruchom
+   `npx --yes web-push generate-vapid-keys --json`. Powstaną publiczny i
+   prywatny klucz VAPID. Nigdy nie zapisuj prywatnego klucza w repo.
+3. **Supabase → Edge Functions → Secrets**: dodaj wartości
+   `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`,
+   `VAPID_SUBJECT` (np. `mailto:twoj-email@example.com`) oraz niezależny,
+   losowy `CRON_SECRET` (minimum 32 znaki). Funkcja używa wbudowanego
+   `SUPABASE_SERVICE_ROLE_KEY` tylko na serwerze.
+4. **GitHub → Settings → Secrets and variables → Actions**:
+   - Variables: `VAPID_PUBLIC_KEY` (ta sama część publiczna),
+     `SUPABASE_PROJECT_REF` (identyfikator projektu w URL Dashboard);
+   - Secrets: `SUPABASE_ACCESS_TOKEN` (token konta do wdrożenia funkcji),
+     `WEB_PUSH_CRON_SECRET` (ta sama wartość co `CRON_SECRET` w Supabase).
+   - Zachowaj istniejące `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
+     `SUPABASE_DB_URL` i `SUPABASE_DB_PASSWORD` zgodnie z instrukcją wyżej.
+5. **GitHub → Actions**: uruchom ręcznie **Wdróż funkcję powiadomień**.
+   Funkcja `send-reminders` odrzuca wszystkie zapytania bez `x-cron-secret`.
+   Następnie ustaw Actions variable `WEB_PUSH_ENABLED` na dokładnie `true`
+   i ponownie opublikuj Pages (doda to publiczny VAPID do `dist/config.js`).
+6. Na iPhonie dodaj stronę do **ekranu początkowego**, uruchom ją jako aplikację,
+   zaloguj się i wejdź w **Ustawienia → Przypomnienia na telefon → Włącz
+   powiadomienia**. Safari w zwykłej karcie na iOS nie wystarczy.
+
+Harmonogram `.github/workflows/send-reminders.yml` uruchamia się codziennie
+około 09:10 czasu polskiego zimą / 10:10 latem (Github Actions nie gwarantuje
+punktualności). Można też wywołać go ręcznie w Actions, aby sprawdzić wysyłkę.
+
+System wysyła jednorazowe przypomnienie na dany termin o nieukończonym zadaniu
+(dziś/jutro), o własnym laboratorium w ustawionym oknie 7/3 dni i raz na tydzień
+pytanie o niesprawdzone laboratoria/ćwiczenia z opublikowanego planu grupy.
+Każda subskrypcja jest powiązana z zalogowanym użytkownikiem; RLS nie pozwala
+innemu kontu jej odczytać. Powiadomienia nie zawierają prywatnych notatek.
+Wylogowanie najpierw wyłącza subskrypcję na tym urządzeniu. Nie ma możliwości
+trwałego przypięcia powiadomienia na ekranie blokady iOS.
+
+**Uwaga:** podczas wdrażania funkcji zweryfikuj, że migracje przeszły, a klucze
+zostały dodane jako sekrety serwera, nie do publicznego pliku `config.js`.
+Bez tego przycisk w ustawieniach pokaże komunikat o brakującej konfiguracji.
 

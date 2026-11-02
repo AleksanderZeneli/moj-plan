@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const vm=require('node:vm');
 function app(configured=false){
   const root={innerHTML:''};
-  const context=vm.createContext({SUPABASE_URL:configured?'https://example.supabase.co':'',SUPABASE_ANON_KEY:configured?'public':'',document:{querySelector:()=>root,querySelectorAll:()=>[],addEventListener:()=>{}},console,Intl,Date,URL,setTimeout,clearTimeout,location:{href:'https://example.org/moj-plan/'},FormData:class{constructor(form){this.form=form;}get(key){return this.form.values[key];}}});
+  const context=vm.createContext({SUPABASE_URL:configured?'https://example.supabase.co':'',SUPABASE_ANON_KEY:configured?'public':'',VAPID_PUBLIC_KEY:'',document:{querySelector:()=>root,querySelectorAll:()=>[],addEventListener:()=>{}},console,Intl,Date,URL,setTimeout,clearTimeout,location:{href:'https://example.org/moj-plan/'},FormData:class{constructor(form){this.form=form;}get(key){return this.form.values[key];}}});
   const source=fs.readFileSync('app.js','utf8').replace(/^import [^\r\n]*\r?\n/,'').replace(/start\(\);\s*$/,'');
   vm.runInContext(source,context);
   return {run:code=>vm.runInContext(code,context),context,root};
@@ -13,6 +13,25 @@ test('week includes Monday through Sunday across year and daylight saving bounda
   const a=app();
   assert.equal(a.run("weekDays(toDate('2027-01-01')).join(',')"),'2026-12-28,2026-12-29,2026-12-30,2026-12-31,2027-01-01,2027-01-02,2027-01-03');
   assert.equal(a.run("onDate({date:'2026-10-19',recurrence:'weekly'},'2026-10-26')"),true);
+});
+test('mobile week displays all seven days without horizontal timeline and opens day details',()=>{
+  const a=app();
+  a.run("state.date=toDate('2026-11-02');state.events=[{title:'Fizyka',date:'2026-11-02',start_time:'08:00',end_time:'09:35',kind:'university'},{title:'Wizyta',date:'2026-11-08',start_time:'17:00',end_time:'18:00',kind:'personal'}]");
+  const html=a.run('weekCalendar()');
+  assert.equal((html.match(/class="mobile-week-day /g)||[]).length,7);
+  assert.ok(html.includes('data-date="2026-11-08" data-calendar-mode="day"'));
+  assert.ok(html.includes('08:00 Fizyka')&&html.includes('17:00 Wizyta'));
+  const styles=fs.readFileSync('styles.css','utf8');
+  assert.match(styles,/\.week-scroll,\.desktop-calendar-note\{display:none\}/);
+});
+test('settings do not occupy the mobile bar and the shortcut remains accessible',()=>{
+  const a=app();
+  const nav=a.run('sidebar()');
+  assert.equal((nav.match(/class="mobile-nav"/g)||[]).length,1);
+  const mobile=nav.slice(nav.indexOf('class="mobile-nav"'));
+  assert.equal((mobile.match(/data-nav=/g)||[]).length,5);
+  assert.ok(!mobile.includes('data-nav="settings"'));
+  assert.ok(a.run('render();root.innerHTML').includes('aria-label="Ustawienia"'));
 });
 test('week renders official and personal events, overlaps and Sunday; deadlines stay outside time grid',()=>{
   const a=app();

@@ -1,10 +1,10 @@
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+import { SUPABASE_URL, SUPABASE_ANON_KEY, VAPID_PUBLIC_KEY } from './config.js';
 
 const root = document.querySelector('#app');
 const configured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 let client = null;
 let session = null;
-let state = { view: 'today', calendarMode: 'week', date: new Date(), filter: 'all', eventFilter: 'upcoming', preparationFilter: 'all', events: [], official: [], officialStatus: '', tasks: [], labs: [], preparations: [], preparationError: '', profile: null, demo: !configured };
+let state = { view: 'today', calendarMode: 'week', date: new Date(), filter: 'all', eventFilter: 'upcoming', preparationFilter: 'all', events: [], official: [], officialStatus: '', tasks: [], labs: [], preparations: [], preparationError: '', profile: null, demo: !configured, pushEnabled: false };
 let authBusy = false;
 let officialRequest = 0;
 let lastOfficialCheck = 0;
@@ -17,8 +17,94 @@ const fmt = (s, options={day:'numeric', month:'short'}) => new Intl.DateTimeForm
 const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uuid = () => crypto.randomUUID();
 let toastTimer;
+const navLinks = [
+  ['today','Dziś','Dzisiaj','home'],
+  ['calendar','Plan','Kalendarz','calendar'],
+  ['events','Wydarzenia','Wydarzenia','clock'],
+  ['labs','Zajęcia','Na zajęcia','book'],
+  ['tasks','Zadania','Poza uczelnią','check'],
+  ['settings','Ustawienia','Ustawienia','settings'],
+];
+const iconPaths = {
+  home: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>',
+  calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  book: '<path d="M12 6c-2.5-1.5-5.5-2-9-1v14c3.5-1 6.5-.5 9 1 2.5-1.5 5.5-2 9-1V5c-3.5-1-6.5-.5-9 1zM12 6v14"/>',
+  check: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-6"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M4.9 4.9 7 7m10 10 2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/>',
+  bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',
+};
+function icon(name){return `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${iconPaths[name]||''}</svg>`;}
 
 function notify(message){ document.querySelector('.toast')?.remove();const el=document.createElement('div');el.className='toast';el.textContent=message;document.body.append(el);clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.remove(),3600); }
+function pushSupported(){return typeof navigator!=='undefined'&&'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;}
+function isIOS(){return typeof navigator!=='undefined'&&/iPad|iPhone|iPod/.test(navigator.userAgent);}
+function isInstalledApp(){return Boolean(navigator.standalone||window.matchMedia?.('(display-mode: standalone)').matches);}
+function vapidKeyBytes(value){
+  const padded=(value+'='.repeat((4-value.length%4)%4)).replace(/-/g,'+').replace(/_/g,'/');
+  return Uint8Array.from(atob(padded),character=>character.charCodeAt(0));
+}
+function notificationSettings(){
+  let explanation='Powiadomienia pojawią się także przy zamkniętej aplikacji — po uruchomieniu usługi wysyłającej Web Push.';
+  let button='';
+  if(state.demo||!session)explanation='Zaloguj się, aby przypisać powiadomienia do swojego konta.';
+  else if(!pushSupported())explanation='Ta przeglądarka nie obsługuje powiadomień Web Push.';
+  else if(isIOS()&&!isInstalledApp())explanation='Na iPhonie otwórz aplikację w Safari, wybierz Udostępnij → Do ekranu początkowego, a następnie uruchom ją z ikony.';
+  else if(!VAPID_PUBLIC_KEY)explanation='Powiadomienia oczekują na konfigurację serwera (publicznego klucza VAPID). Przypomnienia w aplikacji nadal działają.';
+  else if(Notification.permission==='denied')explanation='Powiadomienia są zablokowane. Włącz je w ustawieniach powiadomień urządzenia.';
+  else {
+    button=`<button class="btn ${state.pushEnabled?'ghost':'primary'}" data-action="${state.pushEnabled?'disable-push':'enable-push'}">${state.pushEnabled?'Wyłącz powiadomienia':'Włącz powiadomienia'}</button>`;
+  }
+  return `<section class="notification-panel"><div class="notification-heading">${icon('bell')}<div><h3>Przypomnienia na telefon</h3><p class="small muted">${state.pushEnabled?'Powiadomienia włączone na tym urządzeniu.':'Pytania o przygotowanie, zbliżające się zadania i laboratoria.'}</p></div></div><p class="muted small">${explanation}</p>${button}</section>`;
+}
+async function refreshPushStatus(){
+  if(!pushSupported()||!session){state.pushEnabled=false;return;}
+  try{
+    const registration=await navigator.serviceWorker.ready;
+    const subscription=await registration.pushManager.getSubscription();
+    if(!subscription)state.pushEnabled=false;
+    else{
+      const {data,error}=await client.from('push_subscriptions').select('id').eq('user_id',session.user.id).eq('endpoint',subscription.endpoint).maybeSingle();
+      state.pushEnabled=!error&&Boolean(data);
+    }
+  }
+  catch{state.pushEnabled=false;}
+  if(state.view==='settings')render();
+}
+async function enablePush(){
+  if(!session||!pushSupported()||!VAPID_PUBLIC_KEY)return;
+  if(isIOS()&&!isInstalledApp()){notify('Na iPhonie najpierw dodaj Mój Plan do ekranu początkowego.');return;}
+  // Permission must be requested directly from the user's click handler.
+  const permission=await Notification.requestPermission();
+  if(permission!=='granted'){notify('Nie przyznano zgody na powiadomienia.');render();return;}
+  try{
+    const registration=await navigator.serviceWorker.ready;
+    let subscription=await registration.pushManager.getSubscription();
+    if(subscription){
+      const {data,error}=await client.from('push_subscriptions').select('id').eq('user_id',session.user.id).eq('endpoint',subscription.endpoint).maybeSingle();
+      if(error)throw error;
+      // A different account may have used this browser in the past.
+      if(!data){await subscription.unsubscribe();subscription=null;}
+    }
+    if(!subscription)subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:vapidKeyBytes(VAPID_PUBLIC_KEY)});
+    const serialized=subscription.toJSON();
+    const {error}=await client.from('push_subscriptions').upsert({user_id:session.user.id,endpoint:subscription.endpoint,p256dh:serialized.keys.p256dh,auth:serialized.keys.auth},{onConflict:'endpoint'});
+    if(error)throw error;
+    state.pushEnabled=true;render();notify('Telefon zapisany do powiadomień.');
+  }catch(error){notify('Nie udało się włączyć powiadomień: '+error.message);await refreshPushStatus();}
+}
+async function disablePush(){
+  if(!pushSupported())return;
+  try{
+    const registration=await navigator.serviceWorker.ready;
+    const subscription=await registration.pushManager.getSubscription();
+    if(subscription){
+      if(session){const {error}=await client.from('push_subscriptions').delete().eq('user_id',session.user.id).eq('endpoint',subscription.endpoint);if(error)throw error;}
+      await subscription.unsubscribe();
+    }
+    state.pushEnabled=false;render();notify('Powiadomienia wyłączone na tym urządzeniu.');
+  }catch(error){notify('Nie udało się wyłączyć powiadomień: '+error.message);}
+}
 function starterData(){
   const today=new Date(), tomorrow=localDate(addDays(today,1)), next=localDate(addDays(today,5));
   state.events=[{id:uuid(),title:'Programowanie — laboratorium',kind:'university',subject:'Programowanie',date:tomorrow,start_time:'08:00',end_time:'09:35',location:'Sala 213',recurrence:'weekly'},{id:uuid(),title:'Trening',kind:'personal',subject:'',date:localDate(today),start_time:'17:00',end_time:'18:00',location:'',recurrence:'none'}];
@@ -145,7 +231,9 @@ async function remove(table,id){
   if(error)notify(error.message);else await load();
 }
 function button(label,action=''){return `<button class="btn ${action==='primary'?'primary':'ghost'}" data-action="${action||'add'}">${label}</button>`;}
-function sidebar(){const links=[['today','◫','Dzisiaj'],['calendar','▦','Kalendarz'],['events','◷','Wydarzenia'],['labs','✎','Na zajęcia'],['tasks','☑','Poza uczelnią'],['settings','⚙','Ustawienia']];return `<aside class="sidebar"><div class="brand"><span class="brand-icon">✓</span>Mój Plan</div><nav class="nav">${links.map(([id,icon,name])=>`<button class="${state.view===id?'active':''}" data-nav="${id}">${icon}&nbsp; ${name}</button>`).join('')}</nav><div class="sidebar-foot">${state.demo?'Tryb podglądu · dane tylko w pamięci':'Prywatny plan · Supabase'}<br>WAT + życie poza uczelnią</div></aside><nav class="mobile-nav">${links.map(([id,icon,name])=>`<button class="${state.view===id?'active':''}" data-nav="${id}"><strong>${icon}</strong>${name}</button>`).join('')}</nav>`;}
+function sidebar(){
+  return `<aside class="sidebar"><div class="brand"><span class="brand-icon">✓</span>Mój Plan</div><nav class="nav">${navLinks.map(([id,,name,symbol])=>`<button class="${state.view===id?'active':''}" data-nav="${id}" ${state.view===id?'aria-current="page"':''}>${icon(symbol)} <span>${name}</span></button>`).join('')}</nav><div class="sidebar-foot">${state.demo?'Tryb podglądu · dane tylko w pamięci':'Prywatny plan · Supabase'}<br>WAT + życie poza uczelnią</div></aside><nav class="mobile-nav" aria-label="Główna nawigacja">${navLinks.filter(([id])=>id!=='settings').map(([id,label,,symbol])=>`<button class="${state.view===id?'active':''}" data-nav="${id}" aria-label="${label}" ${state.view===id?'aria-current="page"':''}>${icon(symbol)}<span>${label}</span></button>`).join('')}</nav>`;
+}
 function nextEventDate(event,today=localDate(new Date())){if(event.date>=today)return event.date;if(event.recurrence!=='weekly')return null;const days=Math.round((toDate(today)-toDate(event.date))/dayMs);return localDate(addDays(toDate(event.date),Math.ceil(days/7)*7));}
 function manualEventOccurrences(now=new Date()){const today=localDate(now),clock=`${pad(now.getHours())}:${pad(now.getMinutes())}`;return state.events.map(event=>{let nextOccurrence=nextEventDate(event,today);if(nextOccurrence===today&&event.end_time.slice(0,5)<=clock)nextOccurrence=event.recurrence==='weekly'?localDate(addDays(toDate(today),7)):null;return {...event,nextOccurrence};}).sort((a,b)=>(a.nextOccurrence||a.date).localeCompare(b.nextOccurrence||b.date)||a.start_time.localeCompare(b.start_time));}
 function dashboardCounts(){const upcoming=upcomingPreparations(),today=localDate(new Date()),until=localDate(addDays(toDate(today),7));return {check:upcoming.filter(e=>preparationStatus(e)==='check').length,prepare:upcoming.filter(e=>preparationStatus(e)==='prepare').length,university:state.tasks.filter(t=>taskCategory(t)==='university'&&!t.completed).length,personal:state.tasks.filter(t=>taskCategory(t)==='personal'&&!t.completed).length,events:manualEventOccurrences().filter(e=>e.nextOccurrence&&e.nextOccurrence<until).length};}
@@ -162,6 +250,14 @@ function promptCard(){const pending=[...activeLabs().filter(l=>l.daysAway<=l.rem
 function todayView(){const date=localDate(state.date);return `${stats()}${promptCard()}<div class="layout"><div class="stack"><section class="card"><div class="section-head"><h2>Plan dnia · ${fmt(state.date,{weekday:'long',day:'numeric',month:'long'})}</h2><button class="btn ghost" data-add="events">+ Wydarzenie</button></div>${weekStrip()}${agenda(date)}</section></div><div class="stack"><section class="card"><div class="section-head"><h2>Na zajęcia</h2><button class="btn ghost" data-add="tasks" data-task-category="university">+ Zadanie</button></div>${taskList(3,'university')}<button class="text-btn" data-nav="labs">Zadania i przygotowania →</button></section><section class="card"><div class="section-head"><h2>Poza uczelnią</h2><button class="btn ghost" data-add="tasks" data-task-category="personal">+ Zadanie</button></div>${taskList(3,'personal')}<button class="text-btn" data-nav="tasks">Wszystkie prywatne sprawy →</button></section></div></div>`;}
 function weekDays(date=state.date){const monday=addDays(date,-((date.getDay()+6)%7));return Array.from({length:7},(_,i)=>localDate(addDays(monday,i)));}
 const minutes = time => Number(time.slice(0,2))*60+Number(time.slice(3,5));
+function mobileWeekCalendar(days,events){
+  return `<div class="mobile-week" aria-label="Zajęcia w całym tygodniu">${days.map(day=>{
+    const entries=events.filter(event=>onDate(event,day)).sort((a,b)=>a.start_time.localeCompare(b.start_time));
+    const selected=day===localDate(state.date),today=day===localDate(new Date());
+    const preview=entries.slice(0,2).map(event=>`${esc(event.start_time.slice(0,5))} ${esc(event.title)}`).join(' · ');
+    return `<button class="mobile-week-day ${selected?'selected':''} ${today?'today':''}" data-date="${day}" data-calendar-mode="day" aria-label="${esc(fmt(day,{weekday:'long',day:'numeric',month:'long'}))}. ${entries.length} wydarzeń. Pokaż szczegóły."><span class="mobile-week-date"><strong>${fmt(day,{weekday:'short'})}</strong><span>${fmt(day,{day:'numeric',month:'short'})}</span></span><span class="mobile-week-summary">${entries.length?`<strong>${entries.length} ${entries.length===1?'zajęcia':'zajęcia / wydarzenia'}</strong><small>${preview}${entries.length>2?` · +${entries.length-2}`:''}</small>`:'<small>Brak zajęć</small>'}</span><span class="mobile-week-chevron" aria-hidden="true">›</span></button>`;
+  }).join('')}</div>`;
+}
 function weekCalendar(){
   const days=weekDays(), events=allEvents();
   const visible=events.filter(e=>days.some(day=>onDate(e,day)));
@@ -169,7 +265,7 @@ function weekCalendar(){
   const last=Math.max(21*60,...visible.map(e=>Math.ceil(minutes(e.end_time)/60)*60));
   const height=(last-first)*1.2;
   const hours=Array.from({length:(last-first)/60},(_,i)=>first+i*60);
-  return `<p class="muted small">Zajęcia WAT i prywatne wydarzenia na jednej osi czasu. Na telefonie przesuń plan w bok.</p><div class="week-scroll" tabindex="0" role="region" aria-label="Plan całego tygodnia"><div class="week-grid"><div class="week-corner">Godzina</div>${days.map(day=>`<button class="week-heading ${day===localDate(new Date())?'is-today':''}" data-date="${day}" data-calendar-mode="day">${fmt(day,{weekday:'short'})}<strong>${fmt(day)}</strong></button>`).join('')}<div class="week-hours" style="height:${height}px">${hours.map(hour=>`<span style="top:${(hour-first)*1.2}px">${pad(hour/60)}:00</span>`).join('')}</div>${days.map(day=>{
+  return `<p class="muted small desktop-calendar-note">Zajęcia WAT i prywatne wydarzenia na jednej osi czasu.</p>${mobileWeekCalendar(days,events)}<div class="week-scroll" tabindex="0" role="region" aria-label="Plan całego tygodnia"><div class="week-grid"><div class="week-corner">Godzina</div>${days.map(day=>`<button class="week-heading ${day===localDate(new Date())?'is-today':''}" data-date="${day}" data-calendar-mode="day">${fmt(day,{weekday:'short'})}<strong>${fmt(day)}</strong></button>`).join('')}<div class="week-hours" style="height:${height}px">${hours.map(hour=>`<span style="top:${(hour-first)*1.2}px">${pad(hour/60)}:00</span>`).join('')}</div>${days.map(day=>{
     const entries=events.filter(e=>onDate(e,day)).sort((a,b)=>a.start_time.localeCompare(b.start_time)||a.end_time.localeCompare(b.end_time));
     const groups=[];
     for(const event of entries){let group=groups.at(-1);const start=minutes(event.start_time),end=minutes(event.end_time);if(!group||start>=group.end){group={end,lanes:[],items:[]};groups.push(group);}let lane=group.lanes.findIndex(until=>until<=start);if(lane<0)lane=group.lanes.length;group.lanes[lane]=end;group.end=Math.max(group.end,end);group.items.push({event,lane,start,end});}
@@ -180,10 +276,10 @@ function calendarView(){const days=weekDays(),week=state.calendarMode==='week';r
 function taskFilters(){return `<div class="filters">${[['all','Wszystkie'],['active','Do zrobienia'],['done','Wykonane']].map(([id,label])=>`<button class="${state.filter===id?'active':''}" data-filter="${id}">${label}</button>`).join('')}</div>`;}
 function tasksView(){return `<section class="card"><div class="section-head"><h2>Poza uczelnią</h2><button class="btn primary" data-add="tasks" data-task-category="personal">+ Nowe zadanie</button></div><p class="muted">Prywatne sprawy, zakupy, praca i inne zadania.</p>${taskFilters()}${taskList(Infinity,'personal')}</section>`;}
 function labsView(){return `<div class="stack"><section class="card"><div class="section-head"><h2>Zadania na zajęcia</h2><button class="btn primary" data-add="tasks" data-task-category="university">+ Zadanie na zajęcia</button></div>${taskFilters()}${taskList(Infinity,'university')}</section><section class="card"><div class="section-head"><h2>Przygotowania z planu</h2></div><p class="muted">Laboratoria i ćwiczenia na najbliższe 7 dni. Niebieskie: do sprawdzenia. Pomarańczowe: do przygotowania. Zielone: gotowe lub bez przygotowania.</p><div class="filters preparation-filters">${[['all','Wszystkie'],['check','Do sprawdzenia'],['prepare','Do przygotowania'],['done','Przygotowane'],['none','Bez przygotowania']].map(([id,label])=>`<button class="${state.preparationFilter===id?'active':''}" data-preparation-filter="${id}">${label}</button>`).join('')}</div>${preparationCards()}</section><section class="card"><div class="section-head"><h2>Własne notatki do laboratoriów</h2><button class="btn ghost" data-add="labs">+ Notatka</button></div>${labCards()}</section></div>`;}
-function settingsView(){return `<section class="card"><div class="section-head"><h2>Ustawienia</h2></div><h3>Twoja grupa WAT</h3><form id="group-form" class="form"><label>Kod grupy<input name="group" value="${esc(state.profile?.wat_group||'')}" placeholder="Np. WCY25KY2S1" maxlength="40" autocomplete="off" required></label><div class="top-actions"><button class="btn primary" type="submit">Zapisz grupę</button><button class="btn ghost" type="button" data-action="refresh-wcy">Sprawdź aktualizacje</button></div></form><p class="muted small">${esc(state.officialStatus||'Plan jest pobierany z oficjalnej strony WCY, gdy plik Twojej grupy jest dostępny.')}</p><p class="muted small">Możesz wpisać dowolny kod grupy WCY. Zajęcia pokażą się po wygenerowaniu pliku tej grupy przez nasz importer.</p><hr style="border:0;border-top:1px solid #e8eef3;margin:24px 0"><p><strong>Powiadomienia systemowe</strong></p><p class="muted small">Tygodniowe pytania działają w aplikacji. Powiadomienia przy zamkniętej aplikacji wymagają osobnego backendu Web Push i zgody na iPhonie.</p>${state.demo?'<p class="banner warn">Tryb demonstracyjny: zmiany znikną po odświeżeniu. Aby zachowywać dane wyłącznie w chmurze, skonfiguruj Supabase.</p>':`<p class="muted">Zalogowano jako ${esc(session.user.email||'użytkownik')}</p><button class="btn danger" data-action="logout">Wyloguj</button>`}</section>`;}
-function render(){const names={today:'Dzień dobry!',calendar:'Twój kalendarz',events:'Moje wydarzenia',tasks:'Poza uczelnią',labs:'Na zajęcia',settings:'Ustawienia'};root.innerHTML=`<div class="shell">${sidebar()}<main class="main"><header class="topbar"><div><p class="eyebrow">Twoja przestrzeń</p><h1>${names[state.view]}</h1><div class="muted small">${fmt(new Date(),{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div></div><div class="top-actions">${state.demo?'<span class="pill warning">DEMO</span><button class="btn ghost" data-action="login">Zaloguj się</button>':''}<button class="btn primary" data-add="${state.view==='events'?'events':'tasks'}">${state.view==='events'?'+ Wydarzenie':'+ Dodaj'}</button></div></header>${{today:todayView,calendar:calendarView,events:eventsView,tasks:tasksView,labs:labsView,settings:()=>settingsView()+hiddenClassSettings()}[state.view]()}</main></div>`;}
+function settingsView(){return `<section class="card"><div class="section-head"><h2>Ustawienia</h2></div><h3>Twoja grupa WAT</h3><form id="group-form" class="form"><label>Kod grupy<input name="group" value="${esc(state.profile?.wat_group||'')}" placeholder="Np. WCY25KY2S1" maxlength="40" autocomplete="off" required></label><div class="top-actions"><button class="btn primary" type="submit">Zapisz grupę</button><button class="btn ghost" type="button" data-action="refresh-wcy">Sprawdź aktualizacje</button></div></form><p class="muted small">${esc(state.officialStatus||'Plan jest pobierany z oficjalnej strony WCY, gdy plik Twojej grupy jest dostępny.')}</p><p class="muted small">Możesz wpisać dowolny kod grupy WCY. Zajęcia pokażą się po wygenerowaniu pliku tej grupy przez nasz importer.</p><hr class="settings-divider">${notificationSettings()}${state.demo?'<p class="banner warn">Tryb demonstracyjny: zmiany znikną po odświeżeniu. Aby zachowywać dane wyłącznie w chmurze, skonfiguruj Supabase.</p>':`<p class="muted">Zalogowano jako ${esc(session.user.email||'użytkownik')}</p><button class="btn danger" data-action="logout">Wyloguj</button>`}</section>`;}
+function render(){const names={today:'Dzień dobry!',calendar:'Twój kalendarz',events:'Moje wydarzenia',tasks:'Poza uczelnią',labs:'Na zajęcia',settings:'Ustawienia'};root.innerHTML=`<div class="shell">${sidebar()}<main class="main"><header class="topbar"><div><p class="eyebrow">Twoja przestrzeń</p><h1>${names[state.view]}</h1><div class="muted small">${fmt(new Date(),{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div></div><div class="top-actions">${state.demo?'<span class="pill warning">DEMO</span><button class="btn ghost" data-action="login">Zaloguj się</button>':''}<button class="btn primary topbar-add" data-add="${state.view==='events'?'events':'tasks'}">${state.view==='events'?'+ Wydarzenie':'+ Dodaj'}</button><button class="settings-shortcut ${state.view==='settings'?'active':''}" data-nav="settings" aria-label="Ustawienia" title="Ustawienia">${icon('settings')}</button></div></header>${{today:todayView,calendar:calendarView,events:eventsView,tasks:tasksView,labs:labsView,settings:()=>settingsView()+hiddenClassSettings()}[state.view]()}</main></div>`;}
 function authScreen(){root.innerHTML=`<div class="auth card"><div class="brand" style="color:#19395b;margin:0 0 25px"><span class="brand-icon">✓</span>Mój Plan</div><h1>Zaloguj się</h1><p class="muted">Prywatny kalendarz i zadania zapisane w chmurze.</p>${configured?'':'<p class="banner warn">Logowanie będzie dostępne po podłączeniu usługi kont. Teraz możesz korzystać z podglądu aplikacji.</p>'}<form id="auth-form" class="form"><label>E-mail<input type="email" name="email" autocomplete="email" required ${configured?'':'disabled'}></label><label>Hasło<input type="password" name="password" minlength="6" autocomplete="current-password" required ${configured?'':'disabled'}></label><button class="btn primary" type="submit" ${configured?'':'disabled'}>Zaloguj</button><button type="submit" class="btn ghost" name="mode" value="signup" ${configured?'':'disabled'}>Utwórz konto</button><p id="auth-message" class="small" role="status" aria-live="polite"></p></form>${configured?'':'<button class="btn ghost" data-action="back-demo">Wróć do podglądu</button>'}<p class="small muted">Zadania i notatki są zapisywane w chmurze po zalogowaniu.</p></div>`;}
-function clearAccount(){++officialRequest;session=null;state.events=[];state.tasks=[];state.labs=[];state.preparations=[];state.preparationError='';state.official=[];state.profile=null;state.officialStatus='';document.querySelectorAll('.dialog-backdrop').forEach(el=>el.remove());}
+function clearAccount(){++officialRequest;session=null;state.events=[];state.tasks=[];state.labs=[];state.preparations=[];state.preparationError='';state.official=[];state.profile=null;state.officialStatus='';state.pushEnabled=false;document.querySelectorAll('.dialog-backdrop').forEach(el=>el.remove());}
 async function authenticate(form,mode){
   if(!configured||authBusy)return;
   authBusy=true;
@@ -194,7 +290,7 @@ async function authenticate(form,mode){
     const credentials={email:String(values.get('email')).trim(),password:values.get('password')};
     const result=mode==='signup'?await client.auth.signUp({...credentials,options:{emailRedirectTo:new URL('./',location.href).href}}):await client.auth.signInWithPassword(credentials);
     if(result.error)throw result.error;
-    if(result.data.session){session=result.data.session;await load();}
+    if(result.data.session){session=result.data.session;await load();refreshPushStatus();}
     else message.textContent='Sprawdź skrzynkę pocztową i potwierdź adres e-mail, a następnie zaloguj się.';
   }catch(error){message.textContent='Nie udało się '+(mode==='signup'?'utworzyć konta':'zalogować')+': '+error.message;}
   finally{authBusy=false;form.querySelectorAll('button').forEach(button=>button.disabled=false);}
@@ -229,16 +325,19 @@ document.addEventListener('click',async e=>{const el=e.target.closest('[data-nav
   if(el.dataset.action==='refresh-wcy')await loadOfficial();
   if(el.dataset.action==='hide-requested-classes')await hideRequestedClasses();
   if(el.dataset.action==='calendar-today'){state.date=new Date();render();}
+  if(el.dataset.action==='enable-push')await enablePush();
+  if(el.dataset.action==='disable-push')await disablePush();
   if(el.dataset.action==='login')authScreen();
   if(el.dataset.action==='back-demo')render();
-  if(el.dataset.action==='logout'){const {error}=await client.auth.signOut();if(error){notify('Nie udało się wylogować: '+error.message);return;}clearAccount();authScreen();}
+  if(el.dataset.action==='logout'){if(state.pushEnabled){await disablePush();if(state.pushEnabled)return;}const {error}=await client.auth.signOut();if(error){notify('Nie udało się wylogować: '+error.message);return;}clearAccount();authScreen();}
 });
 document.addEventListener('submit',async e=>{if(e.target.id==='hidden-classes-form'){e.preventDefault();const form=e.target;const choices=[...new Map(state.official.map(event=>{const rule={subject:event.subject||event.title,type:event.type||''};return [JSON.stringify(rule),rule];})).values()].sort((a,b)=>a.subject.localeCompare(b.subject,'pl')||a.type.localeCompare(b.type,'pl'));const selected=new FormData(form).getAll('hidden').map(index=>choices[Number(index)]).filter(Boolean);await saveHiddenClasses(selected);return;}if(e.target.id==='group-form'){e.preventDefault();await setGroup(new FormData(e.target).get('group'));return;}if(e.target.id!=='auth-form')return;e.preventDefault();await authenticate(e.target,e.submitter?.value==='signup'?'signup':'login');});
 async function start(){
+  if(location.hash==='#labs')state.view='labs';
   const refresh=()=>{if(document.visibilityState==='visible'&&document.querySelector('.shell')&&!document.querySelector('.dialog-backdrop')&&Date.now()-lastOfficialCheck>=30*60*1000)loadOfficial();};
   document.addEventListener('visibilitychange',refresh);setInterval(refresh,30*60*1000);
   if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
   if(!configured){starterData();render();await loadOfficial();return;}
-  try {const {createClient}=await import('https://esm.sh/@supabase/supabase-js@2.49.10');client=createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true}});const {data,error}=await client.auth.getSession();if(error)throw error;session=data.session;if(session)await load();else authScreen();client.auth.onAuthStateChange((event,next)=>{if(event==='SIGNED_OUT'){clearAccount();authScreen();}else if(next){const changed=session?.user.id!==next.user.id;session=next;if(changed)setTimeout(()=>load(),0);}});}catch(err){root.innerHTML='<div class="auth card"><h1>Nie udało się połączyć</h1><p>Sprawdź konfigurację Supabase i połączenie z internetem.</p></div>';console.error(err);}
+  try {const {createClient}=await import('https://esm.sh/@supabase/supabase-js@2.49.10');client=createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true}});const {data,error}=await client.auth.getSession();if(error)throw error;session=data.session;if(session){await load();refreshPushStatus();}else authScreen();client.auth.onAuthStateChange((event,next)=>{if(event==='SIGNED_OUT'){clearAccount();authScreen();}else if(next){const changed=session?.user.id!==next.user.id;session=next;if(changed)setTimeout(()=>{load();refreshPushStatus();},0);}});}catch(err){root.innerHTML='<div class="auth card"><h1>Nie udało się połączyć</h1><p>Sprawdź konfigurację Supabase i połączenie z internetem.</p></div>';console.error(err);}
 }
 start();

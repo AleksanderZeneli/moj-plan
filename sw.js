@@ -1,4 +1,4 @@
-const VERSION = 'moj-plan-v7';
+const VERSION = 'moj-plan-v8';
 const CORE = ['./', './index.html', './styles.css', './app.js', './manifest.webmanifest', './icon.svg'];
 self.addEventListener('install', event => event.waitUntil(caches.open(VERSION).then(cache => cache.addAll(CORE))));
 self.addEventListener('activate', event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== VERSION).map(key => caches.delete(key))))));
@@ -16,7 +16,25 @@ self.addEventListener('fetch', event => {
   }).catch(() => caches.match(event.request)));
 });
 self.addEventListener('push', event => {
-  const data = event.data?.json() || {};
-  event.waitUntil(self.registration.showNotification(data.title || 'Mój Plan', {body:data.body || 'Masz nowe przypomnienie', icon:'./icon.svg', data:{url:data.url || './'}}));
+  let data = {};
+  try { data = event.data?.json() || {}; } catch { data = {}; }
+  const title = String(data.title || 'Mój Plan').slice(0, 100);
+  const body = String(data.body || 'Masz nowe przypomnienie').slice(0, 250);
+  const url = new URL('./#labs', self.registration.scope).href;
+  event.waitUntil(self.registration.showNotification(title, {
+    body, icon: new URL('./icon.svg', self.registration.scope).href,
+    badge: new URL('./icon.svg', self.registration.scope).href,
+    tag: String(data.tag || 'moj-plan-reminder').slice(0, 100),
+    data: { url },
+  }));
 });
-self.addEventListener('notificationclick', event => { event.notification.close(); event.waitUntil(clients.openWindow(event.notification.data?.url || './')); });
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const url = new URL('./#labs', self.registration.scope).href;
+  event.waitUntil((async () => {
+    const windows = await clients.matchAll({type:'window',includeUncontrolled:true});
+    const existing = windows.find(client => new URL(client.url).pathname === new URL(url).pathname);
+    if (existing) { await existing.focus(); await existing.navigate(url); }
+    else await clients.openWindow(url);
+  })());
+});
