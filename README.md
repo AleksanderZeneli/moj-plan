@@ -79,3 +79,34 @@ jeszcze mechanizmu wielokrotnego potwierdzania dużego spadku liczby zajęć.
 (https://github.com/kilerdevs/PlanWAT, licencja MIT). Implementacja własna,
 bez pobierania plików kalendarzy lub korzystania z usług PlanWAT.
 
+# Publikacja przez GitHub Pages
+
+Plik `.github/workflows/pages.yml` buduje statyczny katalog `dist` i publikuje
+go w GitHub Pages po każdym pushu do `main`. Skrypt kopiuje także wszystkie
+istniejące `data/*.json`, dzięki czemu poprawnie zsynchronizowane rozkłady
+mogą być publikowane wraz z aplikacją. Nie ma potrzeby tworzenia drugiego repo.
+
+**Ważne:** prywatne repozytorium może wymagać GitHub Pro lub wyższego planu
+do używania GitHub Pages. Na GitHub Free Pages działa dla publicznych repo.
+Nie zmieniaj repo na publiczne, jeżeli znajdują się w nim prywatne pliki.
+Po sprawdzeniu planu konta wejdź w GitHub → repo → Settings → Pages i jako
+źródło wybierz **GitHub Actions**. Docelowy adres będzie miał postać
+`https://aleksanderzeneli.github.io/moj-plan/` dopiero po udanym wdrożeniu.
+
+# Logowanie i grupa
+
+Własne konto, hasło i zapis grupy realizuje Supabase Auth oraz tabela
+`profiles` z ograniczeniem RLS. Kod grupy użytkownik wpisuje po zalogowaniu
+w **Ustawieniach**; nie ma już domyślnie przypisanej grupy dla wszystkich.
+Zadania i notatki są chronione RLS i nie są zapisywane w lokalnej bazie PWA.
+
+Aby uruchomić prawdziwe logowanie, załóż własny projekt Supabase, wykonaj
+`supabase/schema.sql` w SQL Editor i wstaw **publiczne** wartości Project URL
+oraz anon/publishable key w `config.js`. Nigdy nie umieszczaj tam `service_role`
+ani kluczy secret. Dopóki konfiguracja jest pusta, działa tylko tryb DEMO,
+bez prawdziwego logowania i bez trwałości danych.
+
+Wpisanie dowolnej grupy w profilu nie oznacza jeszcze, że istnieje dla niej
+plan JSON. Importer musi najpierw wygenerować dane tej konkretnej grupy;
+przy blokadzie serwera WAT aplikacja pokazuje uczciwy komunikat o braku planu.
+
