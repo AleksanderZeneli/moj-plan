@@ -23,9 +23,14 @@ jobs:
       - name: Przygotuj statyczną stronę
         run: |
           mkdir -p dist/data
-          cp index.html styles.css app.js config.js sw.js manifest.webmanifest icon.svg dist/
+          cp index.html styles.css app.js sw.js manifest.webmanifest icon.svg dist/
           if compgen -G 'data/*.json' > /dev/null; then cp data/*.json dist/data/; fi
           touch dist/.nojekyll
+      - name: Wstaw wyłącznie publiczną konfigurację klienta
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+        run: node tools/build_public_config.mjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
