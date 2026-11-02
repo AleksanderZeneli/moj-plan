@@ -4,7 +4,7 @@ on:
   workflow_call:
   push:
     branches: [main]
-    paths: ['index.html', 'app.js', 'styles.css', 'sw.js', 'manifest.webmanifest', 'icon.svg', 'data/**', 'tools/build_public_config.mjs', 'supabase/migrations/**', '.github/workflows/pages.yml', '.github/workflows/database.yml']
+    paths: ['index.html', 'app.js', 'styles.css', 'sw.js', 'manifest.webmanifest', 'icon.svg', 'data/**', 'tools/build_public_config.mjs', 'tools/database_url.mjs', 'supabase/migrations/**', '.github/workflows/pages.yml', '.github/workflows/database.yml']
 permissions:
   contents: read
 concurrency:

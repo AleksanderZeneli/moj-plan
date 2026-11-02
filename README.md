@@ -123,8 +123,9 @@ Pytania są widoczne w aplikacji; nie są powiadomieniami push.
 Migracje w `supabase/migrations/` są wykonywane przez workflow `database.yml`
 przed publikacją Pages. Wymaga on sekretu repozytorium `SUPABASE_DB_URL`
 z adresem połączenia PostgreSQL przez Session pooler (port 5432).
-Hasło w adresie musi być zakodowane jako część URL. Nie zapisuj tego adresu
-w publicznych zmiennych ani plikach repozytorium.
+Najprościej dodać drugi sekret `SUPABASE_DB_PASSWORD` z samym hasłem bazy,
+bez kodowania. Workflow sam poprawnie zakoduje hasło i zastąpi nim hasło w URL.
+Nie zapisuj hasła ani adresu połączenia w publicznych zmiennych lub plikach repozytorium.
 `supabase db push` zapisuje historię wykonanych migracji i uruchamia tylko brakujące.
 Błąd migracji zatrzymuje publikację nowej wersji aplikacji.
 `schema.sql` jest pełnym schematem do instalacji ręcznej; jego edycja nie jest migracją.

@@ -30,10 +30,13 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: latest
-      - name: Zastosuj niewykonane migracje, zachowując dane
+      - name: Przygotuj połączenie bez ręcznego kodowania hasła
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-        run: supabase db push --db-url "$SUPABASE_DB_URL" --yes
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: node tools/database_url.mjs
+      - name: Zastosuj niewykonane migracje, zachowując dane
+        run: supabase db push --remote "$MIGRATION_DB_URL" --yes
       - name: Przygotuj klienta SQL do jednorazowej zmiany profilu
         if: github.event_name == 'workflow_dispatch' && inputs.apply_owner_filters == true
         run: |
@@ -42,6 +45,5 @@ jobs:
       - name: Zastosuj zamówione filtry do jedynego konta
         if: github.event_name == 'workflow_dispatch' && inputs.apply_owner_filters == true
         env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
           PGSSLMODE: require
-        run: psql "$SUPABASE_DB_URL" --set ON_ERROR_STOP=on --file tools/apply_owner_class_filters.sql
+        run: psql "$MIGRATION_DB_URL" --set ON_ERROR_STOP=on --file tools/apply_owner_class_filters.sql
