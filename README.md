@@ -31,6 +31,15 @@ Gdy `config.js` jest pusty, aplikacja startuje w **trybie demo**. Dane demonstra
 
 ## Uruchomienie lokalne
 
+Kalendarz oferuje widok **Cały tydzień** (poniedziałek–niedziela na osi godzin)
+oraz **Dzień**. Na telefonie tygodniową siatkę można przewijać w poziomie.
+Nakładające się wydarzenia są wyświetlane obok siebie; deadline'y pozostają na liście zadań.
+
+Testy interfejsu i obsługi kont (bez instalacji paczek):
+`node --test tests/app.test.cjs`.
+Testy te używają atrap usługi kont; nie zastępują sprawdzenia RLS na dwóch
+rzeczywistych kontach po skonfigurowaniu Supabase.
+
 To aplikacja statyczna (HTML/CSS/JS, bez instalacji paczek). Użyj lokalnego serwera HTTP, np. w VS Code z rozszerzeniem Live Server. Nie otwieraj przez `file://`, bo service worker i moduły ES wymagają serwera.
 
 ## GitHub Pages

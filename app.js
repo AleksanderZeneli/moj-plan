@@ -4,7 +4,9 @@ const root = document.querySelector('#app');
 const configured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 let client = null;
 let session = null;
-let state = { view: 'today', date: new Date(), filter: 'all', events: [], official: [], officialStatus: '', tasks: [], labs: [], profile: null, demo: !configured };
+let state = { view: 'today', calendarMode: 'week', date: new Date(), filter: 'all', events: [], official: [], officialStatus: '', tasks: [], labs: [], profile: null, demo: !configured };
+let authBusy = false;
+let officialRequest = 0;
 const dayMs = 86400000;
 const pad = n => String(n).padStart(2, '0');
 const localDate = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
@@ -33,6 +35,7 @@ function activeLabs(){
 function onDate(e,date){ if(e.date===date)return true; if(e.recurrence==='weekly'&&e.date<date){const diff=Math.round((toDate(date)-toDate(e.date))/dayMs);return diff>=0&&diff%7===0;}return false; }
 function allEvents(){return [...state.events,...state.official];}
 async function loadOfficial(){
+  const request = ++officialRequest;
   const group=(state.profile?.wat_group||'').toUpperCase();
   state.official=[];
   if(!/^WCY[0-9A-Z_*]+$/.test(group)){state.officialStatus='Wybierz kod grupy WCY w ustawieniach.';render();return;}
@@ -40,16 +43,18 @@ async function loadOfficial(){
     const response=await fetch(`./data/${encodeURIComponent(group)}.json`,{cache:'no-store'});
     if(!response.ok)throw new Error('Brak opublikowanego planu tej grupy');
     const data=await response.json();
+    if(request!==officialRequest)return;
     if(data.group!==group||!Array.isArray(data.events))throw new Error('Nieprawidłowy plik');
     state.official=data.events.filter(e=>e.source==='wcy'&&/^\d{4}-\d{2}-\d{2}$/.test(e.date));
     state.officialStatus=`WCY: ${state.official.length} zajęć · pobrano ${new Date(data.fetched_at).toLocaleString('pl-PL')}`;
-  }catch(error){state.officialStatus=`Nie zsynchronizowano: ${error.message}. Własne wydarzenia pozostają dostępne.`;}
+  }catch(error){if(request!==officialRequest)return;state.officialStatus=`Nie zsynchronizowano: ${error.message}. Własne wydarzenia pozostają dostępne.`;}
   render();
 }
 async function load(){
   if(state.demo){render();return;}
   const uid=session.user.id;
   const [events,tasks,labs,profiles]=await Promise.all(['events','tasks','labs','profiles'].map(table=>client.from(table).select('*').eq('user_id',uid)));
+  if(session?.user.id!==uid)return;
   const failure=[events,tasks,labs,profiles].find(x=>x.error);
   if(failure){notify('Błąd pobierania danych: '+failure.error.message);return;}
   state.events=events.data;state.tasks=tasks.data;state.labs=labs.data;state.profile=profiles.data[0] || null;
@@ -78,12 +83,44 @@ function taskList(limit=Infinity){let items=[...state.tasks].filter(t=>state.fil
 function labCards(){const labs=activeLabs();if(!labs.length)return '<div class="empty">Dodaj laboratorium i ustaw termin kolejnych zajęć.</div>';return labs.map(l=>`<article class="lab"><div class="row"><h3>${esc(l.subject)}</h3><span class="pill ${l.daysAway<=7&&!l.checked_for_next?'warning':''}">${fmt(l.nextOccurrence)}</span></div><div class="small muted">${l.repeat_weekly?'Co tydzień · ':''}${l.daysAway===0?'Dzisiaj':`Za ${l.daysAway} dni`}</div><p>${esc(l.preparation||'Brak notatek. Czy trzeba coś przygotować na te zajęcia?')}</p><div class="lab-actions"><button class="text-btn" data-review="${l.id}">${l.checked_for_next?'✓ Przygotowania sprawdzone':'Czy trzeba się przygotować? →'}</button><button class="text-btn" data-edit="labs:${l.id}">Edytuj</button></div></article>`).join('');}
 function promptCard(){const pending=activeLabs().filter(l=>l.daysAway<=l.remind_days&&!l.checked_for_next);if(!pending.length)return '';return `<div class="banner"><strong>✎ Przygotowania do laboratoriów</strong><p>Masz ${pending.length} ${pending.length===1?'laboratorium':'laboratoria'} wymagające sprawdzenia przygotowań. Czy trzeba wykonać zadanie, przeczytać materiały albo coś zabrać?</p><button class="btn primary" data-nav="labs">Sprawdź przygotowania</button></div>`;}
 function todayView(){const date=localDate(state.date);return `${stats()}${promptCard()}<div class="layout"><div class="stack"><section class="card"><div class="section-head"><h2>Plan dnia · ${fmt(state.date,{weekday:'long',day:'numeric',month:'long'})}</h2><button class="btn ghost" data-add="events">+ Wydarzenie</button></div>${weekStrip()}${agenda(date)}</section></div><div class="stack"><section class="card"><div class="section-head"><h2>Twoje zadania</h2><button class="btn ghost" data-add="tasks">+ Zadanie</button></div>${taskList(5)}</section><section class="card"><div class="section-head"><h2>Następne laboratoria</h2><button class="btn ghost" data-add="labs">+ Notatka</button></div>${labCards()}</section></div></div>`;}
-function calendarView(){return `<section class="card"><div class="section-head"><h2>Kalendarz</h2><div class="top-actions"><button class="btn ghost" data-shift="-7">← tydzień</button><button class="btn ghost" data-shift="7">tydzień →</button><button class="btn primary" data-add="events">+ Wydarzenie</button></div></div>${weekStrip()}<div class="section-head"><h2>${fmt(state.date,{weekday:'long',day:'numeric',month:'long'})}</h2></div>${agenda(localDate(state.date))}</section>`;}
+function weekDays(date=state.date){const monday=addDays(date,-((date.getDay()+6)%7));return Array.from({length:7},(_,i)=>localDate(addDays(monday,i)));}
+const minutes = time => Number(time.slice(0,2))*60+Number(time.slice(3,5));
+function weekCalendar(){
+  const days=weekDays(), events=allEvents();
+  const visible=events.filter(e=>days.some(day=>onDate(e,day)));
+  const first=Math.min(7*60,...visible.map(e=>Math.floor(minutes(e.start_time)/60)*60));
+  const last=Math.max(21*60,...visible.map(e=>Math.ceil(minutes(e.end_time)/60)*60));
+  const height=(last-first)*1.2;
+  const hours=Array.from({length:(last-first)/60},(_,i)=>first+i*60);
+  return `<p class="muted small">Zajęcia WAT i prywatne wydarzenia na jednej osi czasu. Na telefonie przesuń plan w bok.</p><div class="week-scroll" tabindex="0" role="region" aria-label="Plan całego tygodnia"><div class="week-grid"><div class="week-corner">Godzina</div>${days.map(day=>`<button class="week-heading ${day===localDate(new Date())?'is-today':''}" data-date="${day}" data-calendar-mode="day">${fmt(day,{weekday:'short'})}<strong>${fmt(day)}</strong></button>`).join('')}<div class="week-hours" style="height:${height}px">${hours.map(hour=>`<span style="top:${(hour-first)*1.2}px">${pad(hour/60)}:00</span>`).join('')}</div>${days.map(day=>{
+    const entries=events.filter(e=>onDate(e,day)).sort((a,b)=>a.start_time.localeCompare(b.start_time)||a.end_time.localeCompare(b.end_time));
+    const groups=[];
+    for(const event of entries){let group=groups.at(-1);const start=minutes(event.start_time),end=minutes(event.end_time);if(!group||start>=group.end){group={end,lanes:[],items:[]};groups.push(group);}let lane=group.lanes.findIndex(until=>until<=start);if(lane<0)lane=group.lanes.length;group.lanes[lane]=end;group.end=Math.max(group.end,end);group.items.push({event,lane,start,end});}
+    return `<div class="week-column ${day===localDate(new Date())?'is-today':''}" style="height:${height}px">${groups.map(group=>group.items.map(({event:e,lane,start,end})=>`<article class="week-event ${e.kind==='personal'?'personal':''}" style="top:${(start-first)*1.2}px;height:${Math.max((end-start)*1.2,18)}px;left:calc(${lane/group.lanes.length*100}% + 2px);width:calc(${100/group.lanes.length}% - 4px)"><strong>${esc(e.title)}</strong><span>${esc(e.start_time.slice(0,5))}–${esc(e.end_time.slice(0,5))}</span><span>${esc(e.location)}${e.type?' · '+esc(e.type):''}</span>${e.source==='wcy'?'<small>Oficjalny WCY</small>':`<button class="text-btn" data-edit="events:${e.id}">Edytuj</button>`}</article>`).join('')).join('')}${entries.length?'':'<span class="week-empty">Brak wydarzeń</span>'}</div>`;
+  }).join('')}</div></div>`;
+}
+function calendarView(){const days=weekDays(),week=state.calendarMode==='week';return `<section class="card"><div class="section-head calendar-toolbar"><div><h2>Kalendarz</h2><p class="muted small">${fmt(days[0])} – ${fmt(days[6],{day:'numeric',month:'long',year:'numeric'})}</p></div><div class="top-actions"><button class="btn ghost" data-shift="-${week?7:1}" aria-label="Poprzedni ${week?'tydzień':'dzień'}">←</button><button class="btn ghost" data-action="calendar-today">Dzisiaj</button><button class="btn ghost" data-shift="${week?7:1}" aria-label="Następny ${week?'tydzień':'dzień'}">→</button><button class="btn primary" data-add="events">+ Wydarzenie</button></div></div><div class="filters calendar-modes" aria-label="Widok kalendarza">${[['week','Cały tydzień'],['day','Dzień']].map(([mode,label])=>`<button class="${state.calendarMode===mode?'active':''}" data-calendar-mode="${mode}" aria-pressed="${state.calendarMode===mode}">${label}</button>`).join('')}</div>${week?weekCalendar():`${weekStrip()}<h3>${fmt(state.date,{weekday:'long',day:'numeric',month:'long'})}</h3>${agenda(localDate(state.date))}`}</section>`;}
 function tasksView(){return `<section class="card"><div class="section-head"><h2>Zadania i deadline’y</h2><button class="btn primary" data-add="tasks">+ Nowe zadanie</button></div><div class="filters">${[['all','Wszystkie'],['active','Do zrobienia'],['done','Wykonane']].map(([id,label])=>`<button class="${state.filter===id?'active':''}" data-filter="${id}">${label}</button>`).join('')}</div>${taskList()}</section>`;}
 function labsView(){return `${promptCard()}<section class="card"><div class="section-head"><h2>Przygotowanie na laboratoria</h2><button class="btn primary" data-add="labs">+ Dodaj laboratorium</button></div><p class="muted">Zapisz, czego trzeba się nauczyć lub co przynieść. Na 7 dni przed kolejnym terminem aplikacja zapyta, czy wszystko sprawdziłeś.</p>${labCards()}</section>`;}
 function settingsView(){return `<section class="card"><div class="section-head"><h2>Ustawienia</h2></div><h3>Twoja grupa WAT</h3><form id="group-form" class="form"><label>Kod grupy<input name="group" value="${esc(state.profile?.wat_group||'')}" placeholder="Np. WCY25KY2S1" maxlength="40" autocomplete="off" required></label><div class="top-actions"><button class="btn primary" type="submit">Zapisz grupę</button><button class="btn ghost" type="button" data-action="refresh-wcy">Sprawdź aktualizacje</button></div></form><p class="muted small">${esc(state.officialStatus||'Plan jest pobierany z oficjalnej strony WCY, gdy plik Twojej grupy jest dostępny.')}</p><p class="muted small">Możesz wpisać dowolny kod grupy WCY. Zajęcia pokażą się po wygenerowaniu pliku tej grupy przez nasz importer.</p><hr style="border:0;border-top:1px solid #e8eef3;margin:24px 0"><p><strong>Powiadomienia systemowe</strong></p><p class="muted small">Tygodniowe pytania działają w aplikacji. Powiadomienia przy zamkniętej aplikacji wymagają osobnego backendu Web Push i zgody na iPhonie.</p>${state.demo?'<p class="banner warn">Tryb demonstracyjny: zmiany znikną po odświeżeniu. Aby zachowywać dane wyłącznie w chmurze, skonfiguruj Supabase.</p>':`<p class="muted">Zalogowano jako ${esc(session.user.email||'użytkownik')}</p><button class="btn danger" data-action="logout">Wyloguj</button>`}</section>`;}
-function render(){const names={today:'Dzień dobry!',calendar:'Twój kalendarz',tasks:'Lista zadań',labs:'Laboratoria',settings:'Ustawienia'};root.innerHTML=`<div class="shell">${sidebar()}<main class="main"><header class="topbar"><div><p class="eyebrow">Twoja przestrzeń</p><h1>${names[state.view]}</h1><div class="muted small">${fmt(new Date(),{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div></div><div class="top-actions">${state.demo?'<span class="pill warning">DEMO</span>':''}<button class="btn primary" data-add="tasks">+ Dodaj</button></div></header>${{today:todayView,calendar:calendarView,tasks:tasksView,labs:labsView,settings:settingsView}[state.view]()}</main></div>`;}
-function authScreen(){root.innerHTML=`<div class="auth card"><div class="brand" style="color:#19395b;margin:0 0 25px"><span class="brand-icon">✓</span>Mój Plan</div><h1>Zaloguj się</h1><p class="muted">Prywatny kalendarz i zadania zapisane w chmurze.</p><form id="auth-form" class="form"><label>E-mail<input type="email" name="email" autocomplete="email" required></label><label>Hasło<input type="password" name="password" minlength="6" autocomplete="current-password" required></label><button class="btn primary" type="submit">Zaloguj</button><button type="button" class="btn ghost" id="signup">Utwórz konto</button></form><p class="small muted">Nie przechowujemy zadań w lokalnej bazie telefonu.</p></div>`;}
+function render(){const names={today:'Dzień dobry!',calendar:'Twój kalendarz',tasks:'Lista zadań',labs:'Laboratoria',settings:'Ustawienia'};root.innerHTML=`<div class="shell">${sidebar()}<main class="main"><header class="topbar"><div><p class="eyebrow">Twoja przestrzeń</p><h1>${names[state.view]}</h1><div class="muted small">${fmt(new Date(),{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div></div><div class="top-actions">${state.demo?'<span class="pill warning">DEMO</span><button class="btn ghost" data-action="login">Zaloguj się</button>':''}<button class="btn primary" data-add="tasks">+ Dodaj</button></div></header>${{today:todayView,calendar:calendarView,tasks:tasksView,labs:labsView,settings:settingsView}[state.view]()}</main></div>`;}
+function authScreen(){root.innerHTML=`<div class="auth card"><div class="brand" style="color:#19395b;margin:0 0 25px"><span class="brand-icon">✓</span>Mój Plan</div><h1>Zaloguj się</h1><p class="muted">Prywatny kalendarz i zadania zapisane w chmurze.</p>${configured?'':'<p class="banner warn">Logowanie będzie dostępne po podłączeniu usługi kont. Teraz możesz korzystać z podglądu aplikacji.</p>'}<form id="auth-form" class="form"><label>E-mail<input type="email" name="email" autocomplete="email" required ${configured?'':'disabled'}></label><label>Hasło<input type="password" name="password" minlength="6" autocomplete="current-password" required ${configured?'':'disabled'}></label><button class="btn primary" type="submit" ${configured?'':'disabled'}>Zaloguj</button><button type="submit" class="btn ghost" name="mode" value="signup" ${configured?'':'disabled'}>Utwórz konto</button><p id="auth-message" class="small" role="status" aria-live="polite"></p></form>${configured?'':'<button class="btn ghost" data-action="back-demo">Wróć do podglądu</button>'}<p class="small muted">Zadania i notatki są zapisywane w chmurze po zalogowaniu.</p></div>`;}
+function clearAccount(){++officialRequest;session=null;state.events=[];state.tasks=[];state.labs=[];state.official=[];state.profile=null;state.officialStatus='';document.querySelectorAll('.dialog-backdrop').forEach(el=>el.remove());}
+async function authenticate(form,mode){
+  if(!configured||authBusy)return;
+  authBusy=true;
+  const values=new FormData(form),message=form.querySelector('#auth-message');
+  form.querySelectorAll('button').forEach(button=>button.disabled=true);
+  message.textContent=mode==='signup'?'Tworzenie konta…':'Logowanie…';
+  try{
+    const credentials={email:String(values.get('email')).trim(),password:values.get('password')};
+    const result=mode==='signup'?await client.auth.signUp({...credentials,options:{emailRedirectTo:new URL('./',location.href).href}}):await client.auth.signInWithPassword(credentials);
+    if(result.error)throw result.error;
+    if(result.data.session){session=result.data.session;await load();}
+    else message.textContent='Sprawdź skrzynkę pocztową i potwierdź adres e-mail, a następnie zaloguj się.';
+  }catch(error){message.textContent='Nie udało się '+(mode==='signup'?'utworzyć konta':'zalogować')+': '+error.message;}
+  finally{authBusy=false;form.querySelectorAll('button').forEach(button=>button.disabled=false);}
+}
 function field(name,label,type='text',value='',extra=''){return `<label>${label}<input name="${name}" type="${type}" value="${esc(value)}" ${extra}></label>`;}
 function modal(table,id=null){const current=state[table].find(x=>x.id===id)||{},editing=Boolean(id),head={events:'wydarzenie',tasks:'zadanie',labs:'laboratorium'}[table];let fields='';
   if(table==='events')fields=`${field('title','Nazwa','text',current.title,'required')}${field('date','Data','date',current.date||localDate(state.date),'required')}<div class="row">${field('start_time','Od','time',current.start_time?.slice(0,5)||'08:00','required')}${field('end_time','Do','time',current.end_time?.slice(0,5)||'09:30','required')}</div>${field('location','Sala / miejsce','text',current.location)}<label>Rodzaj<select name="kind"><option value="university" ${current.kind==='university'?'selected':''}>Zajęcia WAT</option><option value="personal" ${current.kind==='personal'?'selected':''}>Prywatne wydarzenie</option></select></label><label>Powtarzanie<select name="recurrence"><option value="none">Bez powtarzania</option><option value="weekly" ${current.recurrence==='weekly'?'selected':''}>Co tydzień</option></select></label>`;
@@ -96,9 +133,10 @@ function modal(table,id=null){const current=state[table].find(x=>x.id===id)||{},
 }
 async function reviewLab(id){const lab=activeLabs().find(l=>l.id===id);if(!lab)return;const answer=confirm(`Czy masz wszystko przygotowane na ${lab.subject}?\n\nOK — tak, sprawdzone.\nAnuluj — jeszcze muszę się przygotować.`);if(answer){const {nextOccurrence,daysAway,checked_for_next,...record}=lab;await save('labs',{...record,reviewed_for_date:nextOccurrence});notify('Oznaczono jako sprawdzone.');}else modal('labs',id);}
 async function setGroup(input){const value=input.trim().toUpperCase();if(!/^WCY[0-9A-Z_*]+$/.test(value)){notify('Nieprawidłowy kod grupy WCY');return;}if(state.demo){state.profile={wat_group:value};await loadOfficial();notify('Wybrano grupę w trybie podglądu');return;}const {error}=await client.from('profiles').upsert({user_id:session.user.id,wat_group:value});if(error)notify(error.message);else {await load();notify('Grupa zapisana na Twoim koncie');}}
-document.addEventListener('click',async e=>{const el=e.target.closest('[data-nav],[data-date],[data-add],[data-edit],[data-check],[data-review],[data-filter],[data-shift],[data-action]');if(!el)return;
+document.addEventListener('click',async e=>{const el=e.target.closest('[data-nav],[data-date],[data-add],[data-edit],[data-check],[data-review],[data-filter],[data-shift],[data-action],[data-calendar-mode]');if(!el)return;
   if(el.dataset.nav){state.view=el.dataset.nav;render();}
   if(el.dataset.date){state.date=toDate(el.dataset.date);render();}
+  if(el.dataset.calendarMode){state.calendarMode=el.dataset.calendarMode;render();}
   if(el.dataset.add)modal(el.dataset.add);
   if(el.dataset.edit){const [table,id]=el.dataset.edit.split(':');modal(table,id);}
   if(el.dataset.filter){state.filter=el.dataset.filter;render();}
@@ -106,13 +144,15 @@ document.addEventListener('click',async e=>{const el=e.target.closest('[data-nav
   if(el.dataset.review)await reviewLab(el.dataset.review);
   if(el.dataset.check){const t=state.tasks.find(t=>t.id===el.dataset.check);if(t)await save('tasks',{...t,completed:el.checked});}
   if(el.dataset.action==='refresh-wcy')await loadOfficial();
-  if(el.dataset.action==='logout'){await client.auth.signOut();session=null;state.events=[];state.tasks=[];state.labs=[];authScreen();}
+  if(el.dataset.action==='calendar-today'){state.date=new Date();render();}
+  if(el.dataset.action==='login')authScreen();
+  if(el.dataset.action==='back-demo')render();
+  if(el.dataset.action==='logout'){const {error}=await client.auth.signOut();if(error){notify('Nie udało się wylogować: '+error.message);return;}clearAccount();authScreen();}
 });
-document.addEventListener('submit',async e=>{if(e.target.id==='group-form'){e.preventDefault();await setGroup(new FormData(e.target).get('group'));return;}if(e.target.id!=='auth-form')return;e.preventDefault();const form=new FormData(e.target);const {data,error}=await client.auth.signInWithPassword({email:form.get('email'),password:form.get('password')});if(error)notify(error.message);else{session=data.session;await load();}});
-document.addEventListener('click',async e=>{if(e.target.id!=='signup')return;const form=new FormData(document.querySelector('#auth-form'));const {error}=await client.auth.signUp({email:form.get('email'),password:form.get('password')});notify(error?error.message:'Sprawdź skrzynkę pocztową i potwierdź adres e-mail.');});
+document.addEventListener('submit',async e=>{if(e.target.id==='group-form'){e.preventDefault();await setGroup(new FormData(e.target).get('group'));return;}if(e.target.id!=='auth-form')return;e.preventDefault();await authenticate(e.target,e.submitter?.value==='signup'?'signup':'login');});
 async function start(){
   if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
   if(!configured){starterData();render();await loadOfficial();return;}
-  try {const {createClient}=await import('https://esm.sh/@supabase/supabase-js@2.49.10');client=createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true}});const {data}=await client.auth.getSession();session=data.session;if(session)await load();else authScreen();client.auth.onAuthStateChange((event,next)=>{if(event==='SIGNED_OUT'){session=null;authScreen();}else if(event==='SIGNED_IN'&&!session){session=next;load();}});}catch(err){root.innerHTML='<div class="auth card"><h1>Nie udało się połączyć</h1><p>Sprawdź konfigurację Supabase i połączenie z internetem.</p></div>';console.error(err);}
+  try {const {createClient}=await import('https://esm.sh/@supabase/supabase-js@2.49.10');client=createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true}});const {data,error}=await client.auth.getSession();if(error)throw error;session=data.session;if(session)await load();else authScreen();client.auth.onAuthStateChange((event,next)=>{if(event==='SIGNED_OUT'){clearAccount();authScreen();}else if(next){const changed=session?.user.id!==next.user.id;session=next;if(changed)setTimeout(()=>load(),0);}});}catch(err){root.innerHTML='<div class="auth card"><h1>Nie udało się połączyć</h1><p>Sprawdź konfigurację Supabase i połączenie z internetem.</p></div>';console.error(err);}
 }
 start();
