@@ -1,7 +1,10 @@
 name: GitHub Pages — Mój Plan
 on:
-  # Manualnie do czasu włączenia GitHub Pages.
   workflow_dispatch:
+  workflow_call:
+  push:
+    branches: [main]
+    paths: ['index.html', 'app.js', 'styles.css', 'sw.js', 'manifest.webmanifest', 'icon.svg', 'data/**', 'tools/build_public_config.mjs', '.github/workflows/pages.yml']
 permissions:
   contents: read
 concurrency:
@@ -19,6 +22,8 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - name: Przygotuj statyczną stronę
         run: |
           mkdir -p dist/data

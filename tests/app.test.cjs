@@ -42,3 +42,17 @@ test('signup confirmation, redirect and auth errors are displayed; buttons unloc
   assert.ok(message.textContent.includes('Invalid login credentials'));
   assert.equal(buttons[0].disabled,false);
 });
+test('preparation prompts include only labs and exercises within next seven Warsaw days',()=>{
+  const a=app();
+  a.run("state.profile={wat_group:'WCY25KY2S1'};state.official=[{id:'lab',title:'Bazy',type:'Laboratorium',date:'2026-11-02',start_time:'08:00',end_time:'09:35'},{id:'exercise',title:'Matematyka',type:'Ćwiczenia',date:'2026-11-08',start_time:'08:00',end_time:'09:35'},{id:'lecture',title:'Wykład',type:'Wykład',date:'2026-11-04',start_time:'08:00',end_time:'09:35'},{id:'later',title:'Za tydzień',type:'Laboratorium',date:'2026-11-09',start_time:'08:00',end_time:'09:35'}]");
+  assert.equal(a.run("upcomingPreparations(new Date('2026-11-02T06:00:00Z')).map(e=>e.id).join(',')"),'lab,exercise');
+  assert.equal(a.run("upcomingPreparations(new Date('2026-11-02T09:00:00Z')).map(e=>e.id).join(',')"),'exercise');
+});
+test('room and upstream ID changes keep answers; moved classes and different groups ask again',()=>{
+  const a=app();
+  a.run("state.profile={wat_group:'WCY25KY2S1'};globalThis.event={id:'wcy:old',subject:'Bazy',type:'Laboratorium',date:'2026-11-03',start_time:'08:00',end_time:'09:35',location:'213'};globalThis.key=occurrenceKey(event);state.preparations=[{occurrence_key:key,required:false,notes:'Sprawdzone'}];state.official=[{...event,id:'planwat:new',location:'214'}]");
+  assert.equal(a.run("upcomingPreparations(new Date('2026-11-02T06:00:00Z'))[0].answer.required"),false);
+  assert.equal(a.run("occurrenceKey({...event,date:'2026-11-04'})!==key"),true);
+  assert.equal(a.run("occurrenceKey({...event,start_time:'09:50'})!==key"),true);
+  assert.equal(a.run("state.profile.wat_group='WCY26KY3S1';occurrenceKey(event)!==key"),true);
+});

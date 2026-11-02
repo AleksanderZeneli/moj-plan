@@ -1,4 +1,4 @@
-name: Synchronizuj oficjalny plan WCY
+name: Synchronizuj plan WCY
 on:
   workflow_dispatch:
     inputs:
@@ -7,18 +7,26 @@ on:
         required: true
         default: 'WCY25KY2S1'
         type: string
-  # Harmonogram wznowimy po usunięciu blokady HTTP 403 przez WCY.
+  schedule:
+    - cron: '41 */2 * * *'
 permissions:
   contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: timetable-sync
+  cancel-in-progress: false
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Pobierz bezpośrednio z WCY
+      - name: Pobierz WCY lub publiczny kalendarz PlanWAT
         env:
           REQUESTED_GROUP: ${{ inputs.group || 'WCY25KY2S1' }}
         run: |
@@ -27,10 +35,19 @@ jobs:
             echo 'Nieprawidłowy kod WCY' >&2
             exit 1
           fi
-          python tools/import_wcy.py --group "$GROUP" --output "data/$GROUP.json"
+          python tools/sync_timetable.py --group "$GROUP"
       - name: Zapisz plan, jeśli się zmienił
+        id: commit
         run: |
           git config user.name "moj-plan-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/*.json
-          git diff --cached --quiet || (git commit -m "Aktualizacja oficjalnych planów WCY" && git push)
+          if ! git diff --cached --quiet; then
+            git commit -m "Aktualizacja planów WCY"
+            git push
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+  deploy:
+    needs: refresh
+    if: needs.refresh.outputs.changed == 'true'
+    uses: ./.github/workflows/pages.yml

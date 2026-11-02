@@ -14,7 +14,7 @@ Mobilna aplikacja PWA do planowania zajęć WAT, wydarzeń prywatnych, zadań z 
 
 ## Czego jeszcze nie ma
 
-- **Automatyczny import z WAT:** wymaga potwierdzenia kodu grupy i źródła danych (WATplan/WATcalendars). Nie wyświetlamy przykładowych zajęć jako oficjalnych.
+- Synchronizacja WCY próbuje źródła uczelni, a przy blokadzie używa publicznego kalendarza PlanWAT. Starsze lub podejrzanie pomniejszone dane nie zastępują migawki.
 - **Web Push przy zamkniętej aplikacji:** plik `sw.js` potrafi odebrać push, ale nie ma jeszcze serwera harmonogramującego wysyłkę ani rejestracji subskrypcji. Pytania o laboratorium w v0.1 są widoczne **w aplikacji**, nie na ekranie blokady.
 - **Powiadomienia „przypięte”**: iOS nie umożliwia aplikacjom PWA trwałego przypinania zwykłych powiadomień.
 
@@ -44,7 +44,7 @@ To aplikacja statyczna (HTML/CSS/JS, bez instalacji paczek). Użyj lokalnego ser
 
 ## GitHub Pages
 
-W repozytorium: **Settings → Pages → Build and deployment → Deploy from a branch → main / (root)**. Pamiętaj, że GitHub Pages z prywatnego repozytorium może wymagać odpowiedniego planu GitHub; alternatywnie kod aplikacji (bez sekretów) można opublikować w publicznym repozytorium. Prywatne dane użytkowników pozostają w Supabase z politykami RLS.
+W repozytorium: **Settings → Pages → Build and deployment → GitHub Actions**. Workflow publikuje zmiany aplikacji z `main`. Prywatne dane użytkowników pozostają w Supabase z politykami RLS.
 
 ## Architektura
 
@@ -93,12 +93,37 @@ Ta metoda jest ręcznym importem aktualnej migawki, **nie zapewnia
 automatycznych aktualizacji**. W przypadku bloku 403 nie próbujemy omijać
 zabezpieczeń WAT rotacją niesprawdzonych serwerów proxy.
 
-GitHub Actions (`.github/workflows/sync-wcy.yml`) próbuje synchronizować plan
-dwa razy dziennie. Jeśli oficjalny serwer odrzuci żądanie 403, akcja zakończy
-się błędem, a poprzedni poprawny JSON nie zostanie nadpisany. Publikacja zmian
-JSON do hostingu Sites wymaga osobnego wdrożenia; sam commit na GitHub nie
-aktualizuje automatycznie Sites. Wariant GitHub Pages może udostępniać JSON
-bezpośrednio z repozytorium.
+GitHub Actions (`.github/workflows/sync-wcy.yml`) próbuje synchronizować grupę
+WCY25KY2S1 co dwie godziny; ręczne uruchomienie pozwala podać inną grupę.
+`tools/sync_timetable.py` najpierw czyta WCY, a przy blokadzie lub błędnych danych
+sięga do `https://kilerdevs.github.io/PlanWAT/<GRUPA>/plan.ics`.
+Kalendarz PlanWAT jest źródłem nieoficjalnym, jawnie oznaczonym w aplikacji.
+Nie jest przyjmowany, jeśli jego data wygenerowania poprzedza obecną migawkę.
+Gdy plan się zmieni, workflow zapisuje JSON i wywołuje publikację Pages.
+Otwarte okno aplikacji sprawdza JSON co 30 minut oraz po powrocie do aplikacji
+(jeśli od ostatniego sprawdzenia minęło 30 minut). To nie jest transmisja na żywo;
+GitHub może opóźniać zadania harmonogramu, a źródła mogą udostępniać stare dane.
+W razie błędów poprzedni JSON pozostaje. Przycisk w ustawieniach sprawdza
+opublikowany plik, nie uruchamia crawla uczelni.
+
+Publiczny feed: [PlanWAT](https://github.com/kilerdevs/PlanWAT), projekt kilerdevs
+na licencji [MIT](https://github.com/kilerdevs/PlanWAT/blob/master/LICENSE).
+Parser iCalendar jest własną implementacją; nie skopiowano kodu projektu.
+
+## Przygotowanie do zajęć z planu
+
+Laboratoria i ćwiczenia są rozpoznawane z pola rodzaju zajęć. Aplikacja pyta
+o przyszłe terminy od dzisiaj przez najbliższe siedem dni w strefie Europe/Warsaw.
+Odpowiedź „tak/nie” i notatka dotyczą konkretnego przedmiotu, rodzaju, daty,
+godziny oraz grupy. Zmiana sali lub identyfikatora źródłowego zachowuje odpowiedź.
+Przesunięcie terminu powoduje nowe pytanie; stara notatka jest dostępna w sekcji
+zmienionych lub odwołanych terminów i nie jest automatycznie przepisywana.
+Pytania są widoczne w aplikacji; nie są powiadomieniami push.
+
+Istniejący projekt Supabase wymaga wykonania migracji
+`supabase/migrations/20261102130000_class_preparations.sql` w SQL Editor
+lub przez skonfigurowany proces migracji. Sam push `schema.sql` nie wykonuje
+SQL w bazie. Nowe instalacje mogą uruchomić całe `supabase/schema.sql`.
 
 Walidator zachowuje poprzedni plik, gdy nowe dane nie obejmują bieżącego
 semestru lub liczba zajęć spadnie o ponad 40%. Weryfikuje również identyfikator
