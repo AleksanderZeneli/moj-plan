@@ -51,3 +51,47 @@
   .dashboard-tiles{gap:9px}
   .dashboard-tile{padding:12px}
 }
+
+/* Dashboard: actionable items first, with a clear source for each task. */
+.focus-panel{margin-bottom:20px;border:1px solid #cce5dc;background:linear-gradient(135deg,#f3fffb,#ffffff 62%)}
+.focus-panel .section-head h2{display:flex;align-items:center;gap:10px}
+.focus-panel .eyebrow{margin-bottom:4px}
+.focus-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;font-weight:750;margin-bottom:12px}
+.focus-legend-school{color:#6d38a9}.focus-legend-personal{color:#087e70}.focus-legend-prep{color:#b45309}
+.task{border-radius:8px;padding:12px 8px;border-bottom:1px solid #eef1f5}
+.task-university{border-left:4px solid #8b5cf6;background:#faf7ff;padding-left:10px}
+.task-personal{border-left:4px solid #26a89a;background:#f2fdfa;padding-left:10px}
+.task input[type=checkbox]{width:22px;height:22px;flex-shrink:0;accent-color:#268d84}
+.focus-preparation{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:12px;margin-top:8px;text-align:left;border-radius:10px;border:1px solid #f3ddbf;background:#fffbf3;color:#7c3e0a}
+.focus-preparation strong,.focus-preparation small{display:block}.focus-preparation small{margin-top:4px;color:#93623b}
+.focus-preparation.status-check{border-color:#c7dcfa;background:#f3f8ff;color:#1e40af}
+.today-agenda{margin-top:20px}
+.todo-summary{border-left:5px solid #19395b}
+.todo-counts{display:flex;flex-wrap:wrap;gap:9px;margin:16px 0}
+.todo-counts span{padding:7px 11px;border-radius:12px;background:#eff4f8;color:#36536d;font-size:12px;font-weight:800}
+.todo-group{border-left:5px solid var(--todo-color)}
+.todo-university{--todo-color:#8b5cf6}.todo-preparation{--todo-color:#e99a3a}.todo-personal{--todo-color:#26a89a}.todo-notes{--todo-color:#6884ba}
+.todo-university h2{color:#6d38a9}.todo-preparation h2{color:#9a571a}.todo-personal h2{color:#116d65}
+.mobile-week-help{display:none}
+@media(max-width:900px){
+  .mobile-week-help{display:block;margin:0 0 12px}
+  .mobile-week-day{grid-template-columns:72px minmax(0,1fr);align-items:start;gap:8px;padding:9px}
+  .mobile-week-date{display:grid;align-content:start;gap:3px;min-width:0;padding:7px 2px;border:0;background:transparent;text-align:center;color:#274363;cursor:pointer}
+  .mobile-week-date strong{font-size:16px}.mobile-week-date span{font-size:12px}.mobile-week-date small{font-size:10px;color:#728aa1}
+  .mobile-week-summary{gap:5px;min-width:0}
+  .mobile-week-slot{display:grid;grid-template-columns:74px minmax(0,1fr);gap:7px;align-items:start;padding:7px;border-radius:8px;background:#eaf3fc;color:#244c7b;border-left:3px solid #4b92d1;font-size:11px}
+  .mobile-week-slot.personal{background:#e7f7f1;color:#0d6861;border-color:#39a696}
+  .mobile-week-slot span{white-space:nowrap;font-variant-numeric:tabular-nums;font-size:10.5px}
+  .mobile-week-slot strong{font-size:11px;line-height:1.3;overflow-wrap:anywhere}
+  .mobile-week-summary small{white-space:normal}
+  .focus-panel .section-head{align-items:flex-start}
+  .focus-panel .section-head .btn{padding:9px 11px}
+}
+@media(max-width:600px){
+  .focus-panel{margin-bottom:12px}
+  .todo-counts{gap:5px}.todo-counts span{font-size:11px;padding:7px 8px}
+  .task{flex-wrap:wrap}.task>.pill{margin-left:31px}
+  .focus-preparation{align-items:flex-start}.focus-preparation .pill{white-space:nowrap}
+  .mobile-week-day{grid-template-columns:62px minmax(0,1fr);gap:6px}
+  .mobile-week-slot{grid-template-columns:69px minmax(0,1fr);gap:5px}
+}

@@ -2,21 +2,24 @@
 
 Mobilna aplikacja PWA do planowania zajęć WAT, wydarzeń prywatnych, zadań z deadline'ami i przygotowań na kolejne laboratoria. Repozytorium zawiera pierwszą wersję aplikacji bez płatnych usług.
 
-## Co działa w v0.1
+## Co działa
 
-- Responsywny widok dnia i tygodnia.
+- Widok dnia z najważniejszymi zadaniami i przygotowaniami **na samej górze**.
+- Responsywny kalendarz dnia i **całego tygodnia**; na telefonie każdy z siedmiu dni pokazuje wszystkie swoje wpisy bez przewijania wewnętrznego kalendarza.
 - Ręczne dodawanie, edycja i usuwanie zajęć, wydarzeń i zadań.
-- Wydarzenia tygodniowe; zadania mogą mieć deadline lub nie mieć daty.
+- Wydarzenia tygodniowe; zadania mogą mieć deadline lub nie mieć daty, a także powtarzać się **codziennie**.
+- Jedna zakładka **Do zrobienia** z oddzielnymi kolorami dla zadań uczelnianych, przygotowań do zajęć i spraw prywatnych.
 - Przygotowania do laboratoriów: temat, notatki, data kolejnego labu, powtarzanie co tydzień.
+- Kilka kolejnych godzin tego samego laboratorium (przerwa do 30 minut) jest traktowanych jako **jeden blok przygotowania** — np. pięć zajęć w piątek może oznaczać tylko dwa przygotowania.
 - Pytanie **„Czy masz wszystko przygotowane?”** w aplikacji na 7 lub 3 dni przed laboratorium; potwierdzenie obowiązuje tylko dla najbliższego wystąpienia (w kolejnym tygodniu pojawi się ponownie).
 - Prywatne dane w Supabase Auth + Postgres, chronione RLS.
 - PWA możliwe do dodania na ekran główny iPhone'a.
 
-## Czego jeszcze nie ma
+## Co wymaga dodatkowej konfiguracji
 
 - Synchronizacja WCY próbuje źródła uczelni, a przy blokadzie używa publicznego kalendarza PlanWAT. Starsze lub podejrzanie pomniejszone dane nie zastępują migawki.
 - **Web Push przy zamkniętej aplikacji:** kod rejestracji telefonu, bezpieczny nadawca Supabase Edge Function i harmonogram GitHub Actions są w repozytorium. Działanie na ekranie blokady wymaga jednorazowego wdrożenia funkcji i skonfigurowania kluczy VAPID — poniżej instrukcja. Do tego czasu pytania o przygotowania są widoczne w aplikacji.
-- **Codzienne zadania:** przy dodawaniu zadania wybierz „Powtarzanie → Codziennie”. Zaznaczenie „wykonane” obowiązuje tylko w dniu wykonania według czasu polskiego; następnego dnia zadanie automatycznie wraca do listy aktywnych. Opcjonalna data jest datą rozpoczęcia powtarzania.
+- **Codzienne zadania** już działają: przy dodawaniu zadania wybierz „Powtarzanie → Codziennie”. Zaznaczenie „wykonane” obowiązuje tylko w dniu wykonania według czasu polskiego; następnego dnia zadanie automatycznie wraca do listy aktywnych. Opcjonalna data jest datą rozpoczęcia powtarzania.
 - **Aktualizacje na iPhonie:** skrót „Do ekranu początkowego” jest aplikacją PWA. Zmiany w GitHub Pages pojawiają się pod tym samym adresem — nie trzeba dodawać ikony ponownie. Wejdź w aplikacji w „Ustawienia → Sprawdź aktualizację i odśwież”.
 - **Powiadomienia „przypięte”**: iOS nie umożliwia aplikacjom PWA trwałego przypinania zwykłych powiadomień.
 
@@ -33,10 +36,11 @@ Gdy `config.js` jest pusty, aplikacja startuje w **trybie demo**. Dane demonstra
 
 ## Uruchomienie lokalne
 
-Kalendarz oferuje widok **Cały tydzień** (poniedziałek–niedziela na osi godzin)
-oraz **Dzień**. Na telefonie cały tydzień mieści się na szerokości ekranu
-jako siedem wierszy z podglądem godzin i zajęć; dotknij dnia, aby zobaczyć
-szczegółowy plan. Nie trzeba przewijać osobnego kalendarza w poziomie i pionie.
+Kalendarz oferuje widok **Cały tydzień** (poniedziałek–niedziela na osi godzin
+na komputerze) oraz **Dzień**. Na telefonie cały tydzień mieści się na
+szerokości ekranu jako siedem sekcji ze wszystkimi zajęciami i godzinami;
+dotknij daty, aby otworzyć szczegółowy plan danego dnia. Przewijasz tylko
+stronę, bez dodatkowego przewijania kalendarza w poziomie lub pionie.
 Nakładające się wydarzenia są wyświetlane obok siebie; deadline'y pozostają na liście zadań.
 
 Testy interfejsu i obsługi kont (bez instalacji paczek):
@@ -140,9 +144,9 @@ projektów wcześniej skonfigurowanych ręcznie.
 
 ## Zadania, statusy i własny wybór zajęć
 
-- **Na zajęcia**: osobna lista zadań uczelnianych oraz przygotowania do zajęć z planu.
-- **Poza uczelnią**: zadania prywatne. Starsze zadania trafiają tutaj; kategorię można
-  zmienić podczas edycji zadania.
+- **Do zrobienia**: jedna zakładka ze wszystkimi zadaniami i przygotowaniami:
+  fioletowe zadania na uczelnię, niebieskie/pomarańczowe przygotowania oraz
+  zielone sprawy prywatne. Kategorię można zmienić podczas edycji zadania.
 - **Wydarzenia**: osobna zakładka na ręczne wpisy w kalendarzu z datą i godziną.
   Pokazuje wydarzenia nadchodzące, minione i powtarzalne; pozwala je edytować oraz
   otworzyć wybrany dzień w kalendarzu. Kafelek liczy ręczne wydarzenia z najbliższych
@@ -240,7 +244,10 @@ wyłączony, aby nie generować błędów i e-maili.
 5. **GitHub → Actions**: uruchom ręcznie **Wdróż funkcję powiadomień**.
    Funkcja `send-reminders` odrzuca wszystkie zapytania bez `x-cron-secret`.
    Następnie ustaw Actions variable `WEB_PUSH_ENABLED` na dokładnie `true`
-   i ponownie opublikuj Pages (doda to publiczny VAPID do `dist/config.js`).
+   i ponownie opublikuj Pages (doda to publiczny VAPID oraz informację o aktywacji
+   do `dist/config.js`). Dopóki zmienna nie jest równa `true`, zaplanowane
+   uruchomienia wysyłki mają status **skipped**, a aplikacja nie proponuje
+   włączania nieaktywnej usługi.
 6. Na iPhonie dodaj stronę do **ekranu początkowego**, uruchom ją jako aplikację,
    zaloguj się i wejdź w **Ustawienia → Przypomnienia na telefon → Włącz
    powiadomienia**. Safari w zwykłej karcie na iOS nie wystarczy.
@@ -252,7 +259,8 @@ punktualności). Można też wywołać go ręcznie w Actions, aby sprawdzić wys
 System wysyła jednorazowe przypomnienie na dany termin o nieukończonym zadaniu
 (dziś/jutro), codzienne przypomnienie o zadaniu powtarzanym (jeżeli nie zostało
 wykonane w danym dniu), o własnym laboratorium w ustawionym oknie 7/3 dni i raz na tydzień
-pytanie o niesprawdzone laboratoria/ćwiczenia z opublikowanego planu grupy.
+pytanie o niesprawdzone bloki laboratoriów/ćwiczeń z opublikowanego planu grupy
+(kolejne godziny tego samego przedmiotu liczą się jako jeden blok).
 Każda subskrypcja jest powiązana z zalogowanym użytkownikiem; RLS nie pozwala
 innemu kontu jej odczytać. Powiadomienia nie zawierają prywatnych notatek.
 Wylogowanie najpierw wyłącza subskrypcję na tym urządzeniu. Nie ma możliwości

@@ -39,6 +39,7 @@ jobs:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
           VAPID_PUBLIC_KEY: ${{ vars.VAPID_PUBLIC_KEY }}
+          WEB_PUSH_ENABLED: ${{ vars.WEB_PUSH_ENABLED }}
         run: node tools/build_public_config.mjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4

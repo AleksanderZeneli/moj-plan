@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const vm=require('node:vm');
 function app(configured=false){
   const root={innerHTML:''};
-  const context=vm.createContext({SUPABASE_URL:configured?'https://example.supabase.co':'',SUPABASE_ANON_KEY:configured?'public':'',VAPID_PUBLIC_KEY:'',document:{querySelector:()=>root,querySelectorAll:()=>[],addEventListener:()=>{}},console,Intl,Date,URL,setTimeout,clearTimeout,location:{href:'https://example.org/moj-plan/'},FormData:class{constructor(form){this.form=form;}get(key){return this.form.values[key];}}});
+  const context=vm.createContext({SUPABASE_URL:configured?'https://example.supabase.co':'',SUPABASE_ANON_KEY:configured?'public':'',VAPID_PUBLIC_KEY:'',WEB_PUSH_ENABLED:false,document:{querySelector:()=>root,querySelectorAll:()=>[],addEventListener:()=>{}},console,Intl,Date,URL,setTimeout,clearTimeout,location:{href:'https://example.org/moj-plan/'},FormData:class{constructor(form){this.form=form;}get(key){return this.form.values[key];}}});
   const source=fs.readFileSync('app.js','utf8').replace(/^import [^\r\n]*\r?\n/,'').replace(/start\(\);\s*$/,'');
   vm.runInContext(source,context);
   return {run:code=>vm.runInContext(code,context),context,root};
@@ -14,13 +14,14 @@ test('week includes Monday through Sunday across year and daylight saving bounda
   assert.equal(a.run("weekDays(toDate('2027-01-01')).join(',')"),'2026-12-28,2026-12-29,2026-12-30,2026-12-31,2027-01-01,2027-01-02,2027-01-03');
   assert.equal(a.run("onDate({date:'2026-10-19',recurrence:'weekly'},'2026-10-26')"),true);
 });
-test('mobile week displays all seven days without horizontal timeline and opens day details',()=>{
+test('mobile week displays all seven days with every event and opens day details',()=>{
   const a=app();
   a.run("state.date=toDate('2026-11-02');state.events=[{title:'Fizyka',date:'2026-11-02',start_time:'08:00',end_time:'09:35',kind:'university'},{title:'Wizyta',date:'2026-11-08',start_time:'17:00',end_time:'18:00',kind:'personal'}]");
   const html=a.run('weekCalendar()');
   assert.equal((html.match(/class="mobile-week-day /g)||[]).length,7);
   assert.ok(html.includes('data-date="2026-11-08" data-calendar-mode="day"'));
-  assert.ok(html.includes('08:00 Fizyka')&&html.includes('17:00 Wizyta'));
+  assert.ok(html.includes('08:00–09:35')&&html.includes('Fizyka')&&html.includes('17:00–18:00')&&html.includes('Wizyta'));
+  assert.equal((html.match(/class="mobile-week-slot /g)||[]).length,2);
   const styles=fs.readFileSync('styles.css','utf8');
   assert.match(styles,/\.week-scroll,\.desktop-calendar-note\{display:none\}/);
 });
@@ -29,7 +30,8 @@ test('settings do not occupy the mobile bar and the shortcut remains accessible'
   const nav=a.run('sidebar()');
   assert.equal((nav.match(/class="mobile-nav"/g)||[]).length,1);
   const mobile=nav.slice(nav.indexOf('class="mobile-nav"'));
-  assert.equal((mobile.match(/data-nav=/g)||[]).length,5);
+  assert.equal((mobile.match(/data-nav=/g)||[]).length,4);
+  assert.ok(!mobile.includes('data-nav="labs"')&&mobile.includes('Do zrobienia'));
   assert.ok(!mobile.includes('data-nav="settings"'));
   assert.ok(a.run('render();root.innerHTML').includes('aria-label="Ustawienia"'));
 });
@@ -66,6 +68,33 @@ test('preparation prompts include only labs and exercises within next seven Wars
   a.run("state.profile={wat_group:'WCY25KY2S1'};state.official=[{id:'lab',title:'Bazy',type:'Laboratorium',date:'2026-11-02',start_time:'08:00',end_time:'09:35'},{id:'exercise',title:'Matematyka',type:'Ćwiczenia',date:'2026-11-08',start_time:'08:00',end_time:'09:35'},{id:'lecture',title:'Wykład',type:'Wykład',date:'2026-11-04',start_time:'08:00',end_time:'09:35'},{id:'later',title:'Za tydzień',type:'Laboratorium',date:'2026-11-09',start_time:'08:00',end_time:'09:35'}]");
   assert.equal(a.run("upcomingPreparations(new Date('2026-11-02T06:00:00Z')).map(e=>e.id).join(',')"),'lab,exercise');
   assert.equal(a.run("upcomingPreparations(new Date('2026-11-02T09:00:00Z')).map(e=>e.id).join(',')"),'exercise');
+});
+test('five adjacent timetable periods create two preparation blocks, preserving whole times and old answers',()=>{
+  const a=app();
+  a.run(`state.profile={wat_group:'WCY25KY2S1'};
+    state.official=[['08:00','09:35','Architektura i organizacja komputerów (Laboratorium 5/16)','120 65'],['09:50','11:25','Architektura i organizacja komputerów (Laboratorium 6/16)','120 65'],['11:40','13:15','Architektura i organizacja komputerów (Laboratorium 7/16)','120 65'],['16:00','17:35','Systemy Operacyjne (Laboratorium 3/13)','239 S'],['17:50','19:25','Systemy Operacyjne (Laboratorium 4/13)','239 S']].map(([start_time,end_time,subject,location],i)=>({id:String(i),title:subject,subject,type:'Laboratorium',date:'2026-11-06',start_time,end_time,location}));`);
+  const blocks=JSON.parse(a.run("JSON.stringify(upcomingPreparations(new Date('2026-11-05T08:00:00Z')).map(e=>({title:e.title,start:e.start_time,end:e.end_time,parts:e.parts.length})))"));
+  assert.deepEqual(blocks,[{title:'Architektura i organizacja komputerów',start:'08:00',end:'13:15',parts:3},{title:'Systemy Operacyjne',start:'16:00',end:'19:25',parts:2}]);
+  a.run("state.preparations=[{occurrence_key:occurrenceKey(state.official[1]),required:true,completed:false,notes:'Uczyć się rejestrów'}]");
+  assert.equal(a.run("upcomingPreparations(new Date('2026-11-05T08:00:00Z'))[0].answer.notes"),'Uczyć się rejestrów');
+  assert.equal(a.run("upcomingPreparations(new Date('2026-11-05T08:00:00Z'))[0].preparationKey===occurrenceKey(state.official[0])"),true);
+});
+test('homepage prioritizes actionable tasks and merged checklist has colored sections',()=>{
+  const a=app();
+  a.run("state.tasks=[{id:'one',title:'Nauczyć się C',category:'university',completed:false},{id:'two',title:'Zakupy',category:'personal',completed:false}]");
+  const home=a.run('todayView()');
+  assert.ok(home.indexOf('Do zrobienia teraz')<home.indexOf('Plan dnia'));
+  assert.ok(home.includes('Nauczyć się C')&&home.includes('Zakupy'));
+  const tasks=a.run('tasksView()');
+  for(const token of ['todo-university','todo-preparation','todo-personal','Nauczyć się C','Zakupy'])assert.ok(tasks.includes(token));
+});
+test('push settings explain activation when background sending is disabled',()=>{
+  const a=app(true);
+  a.run("session={user:{id:'one',email:'test@example.org'}}");
+  const html=a.run('notificationSettings()');
+  assert.ok(html.includes('Wysyłka automatyczna nie jest jeszcze skonfigurowana'));
+  assert.ok(html.includes('WEB_PUSH_ENABLED=true'));
+  assert.ok(!html.includes('data-action="enable-push"'));
 });
 test('room and upstream ID changes keep answers; moved classes and different groups ask again',()=>{
   const a=app();

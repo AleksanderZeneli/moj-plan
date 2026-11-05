@@ -43,6 +43,10 @@ function typeOfLesson(value: string): string | null {
 function isHidden(subject: string,type: string,profile: Profile): boolean {
   return (profile.hidden_classes||[]).some(rule=>rule.subject===subject&&(!rule.type||rule.type===type));
 }
+function baseClassTitle(subject: string): string {
+  return subject.replace(/\s*\((?:laboratorium|laboratoria|ćwiczenia|cwiczenia|lab|wykład|wyklad)\s+\d+\s*\/\s*\d+\)\s*$/i,'').trim();
+}
+function clockMinutes(value: string): number {return Number(value.slice(0,2))*60+Number(value.slice(3,5));}
 
 Deno.serve(async request=>{
   const cronSecret=Deno.env.get('CRON_SECRET')||'';
@@ -109,15 +113,20 @@ Deno.serve(async request=>{
       }catch{groupEvents.set(group,[]);}
     }
     const entries=groupEvents.get(group)||[];
-    const pending=entries.filter((entry):entry is Record<string,unknown>=>Boolean(entry&&typeof entry==='object')).filter(event=>{
-      const date=String(event.date||''),start=String(event.start_time||'');
-      const subject=String(event.subject||event.title||''),type=String(event.type||'');
-      if(!typeOfLesson(type)||isHidden(subject,type,profile)||date<today||date>=nextWeek)return false;
-      if(date===today&&start.slice(0,5)<=currentClock)return false;
-      const key=JSON.stringify([group,subject,typeOfLesson(type),date,start.slice(0,5)]);
-      return !checked.some(answer=>answer.user_id===profile.user_id&&answer.occurrence_key===key);
-    });
-    if(pending.length)append(profile.user_id,{key:`official-week:${mondayOf(today)}`,title:'Czy trzeba się przygotować na zajęcia?',body:`Masz ${pending.length} zajęć do sprawdzenia w tym tygodniu.`,tag:'moj-plan-preparation'});
+    const classes=entries.filter((entry):entry is Record<string,unknown>=>Boolean(entry&&typeof entry==='object')).map(event=>{
+      const subject=String(event.subject||event.title||''),date=String(event.date||''),type=String(event.type||'');
+      return {subject,base:baseClassTitle(subject),date,type,lessonType:typeOfLesson(type),start:String(event.start_time||''),end:String(event.end_time||''),location:String(event.location||'')};
+    }).filter(event=>event.lessonType&&event.date>=today&&event.date<nextWeek&&event.start&&event.end&&!isHidden(event.subject,event.type,profile)&&!isHidden(event.base,event.type,profile))
+      .sort((a,b)=>a.date.localeCompare(b.date)||a.start.localeCompare(b.start));
+    const blocks:{date:string;subject:string;type:string;location:string;end:string;keys:string[]}[]=[];
+    for(const event of classes){
+      const key=JSON.stringify([group,event.subject,event.lessonType,event.date,event.start.slice(0,5)]);
+      const block=blocks.find(item=>item.date===event.date&&item.subject===event.base&&item.type===event.lessonType&&item.location===event.location&&clockMinutes(event.start)-clockMinutes(item.end)>=0&&clockMinutes(event.start)-clockMinutes(item.end)<=30);
+      if(block){block.end=event.end;block.keys.push(key);}
+      else blocks.push({date:event.date,subject:event.base,type:event.lessonType!,location:event.location,end:event.end,keys:[key]});
+    }
+    const pending=blocks.filter(block=>(block.date!==today||block.end.slice(0,5)>currentClock)&&!block.keys.some(key=>checked.some(answer=>answer.user_id===profile.user_id&&answer.occurrence_key===key)));
+    if(pending.length)append(profile.user_id,{key:`official-week:${mondayOf(today)}`,title:'Czy trzeba się przygotować na zajęcia?',body:`Masz ${pending.length} bloków zajęć do sprawdzenia w tym tygodniu.`,tag:'moj-plan-preparation'});
   }
 
   webpush.setVapidDetails(subject,publicKey,privateKey);

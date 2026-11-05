@@ -1,4 +1,4 @@
-const VERSION = 'moj-plan-v9';
+const VERSION = 'moj-plan-v10';
 const CORE = ['./', './index.html', './styles.css', './app.js', './manifest.webmanifest', './icon.svg'];
 self.addEventListener('install', event => event.waitUntil(caches.open(VERSION).then(cache => cache.addAll(CORE)).then(()=>self.skipWaiting())));
 self.addEventListener('activate', event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== VERSION).map(key => caches.delete(key)))).then(()=>self.clients.claim())));
@@ -21,7 +21,7 @@ self.addEventListener('push', event => {
   try { data = event.data?.json() || {}; } catch { data = {}; }
   const title = String(data.title || 'Mój Plan').slice(0, 100);
   const body = String(data.body || 'Masz nowe przypomnienie').slice(0, 250);
-  const url = new URL('./#labs', self.registration.scope).href;
+  const url = new URL('./#tasks', self.registration.scope).href;
   event.waitUntil(self.registration.showNotification(title, {
     body, icon: new URL('./icon.svg', self.registration.scope).href,
     badge: new URL('./icon.svg', self.registration.scope).href,
@@ -31,7 +31,7 @@ self.addEventListener('push', event => {
 });
 self.addEventListener('notificationclick', event => {
   event.notification.close();
-  const url = new URL('./#labs', self.registration.scope).href;
+  const url = new URL('./#tasks', self.registration.scope).href;
   event.waitUntil((async () => {
     const windows = await clients.matchAll({type:'window',includeUncontrolled:true});
     const existing = windows.find(client => new URL(client.url).pathname === new URL(url).pathname);
