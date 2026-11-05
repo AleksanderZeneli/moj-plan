@@ -4,7 +4,7 @@
 .banner.status-check{background:var(--status-bg);border-color:#bfdbfe;color:var(--status-color)}
 .stack{min-width:0;grid-template-columns:minmax(0,1fr)}.section-head{flex-wrap:wrap}.section-head h2{min-width:0;overflow-wrap:anywhere}.topbar{flex-wrap:wrap}.task>div{min-width:0;overflow-wrap:anywhere}
 .dashboard-tiles{grid-template-columns:repeat(5,minmax(0,1fr))}.status-events{--status-color:#075985;--status-bg:#f0f9ff}.event-filters{margin-bottom:18px}@media(max-width:1100px){.dashboard-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.dashboard-tiles .status-events{grid-column:1/-1}}@media(max-width:900px){.shell .mobile-nav{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:2px}.shell .mobile-nav button{max-width:none;min-width:0;width:100%;justify-items:center;padding:2px 1px;overflow-wrap:anywhere}}
-/* Mobile-first navigation: five readable destinations; settings stays in the header. */
+/* Mobile-first navigation: four readable destinations; settings stays in the header. */
 .icon{width:22px;height:22px;display:inline-block;flex-shrink:0}
 .nav button{display:flex;gap:12px;align-items:center;font-size:15px}
 .nav button .icon{width:20px;height:20px}
@@ -21,7 +21,7 @@
 .mobile-week{display:none}
 @media(max-width:900px){
   .main{padding:20px 16px calc(104px + env(safe-area-inset-bottom))}
-  .shell .mobile-nav{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px;align-items:stretch;min-height:76px;padding:7px 10px calc(8px + env(safe-area-inset-bottom));box-shadow:0 -8px 26px #112e4916}
+  .shell .mobile-nav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;align-items:stretch;min-height:76px;padding:7px 10px calc(8px + env(safe-area-inset-bottom));box-shadow:0 -8px 26px #112e4916}
   .shell .mobile-nav button{max-width:none;min-width:0;width:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:9px 1px 7px;min-height:56px;border-radius:13px;color:#64748b;line-height:1.15;font-size:12px;font-weight:650;overflow-wrap:normal}
   .mobile-nav button .icon{width:25px;height:25px;stroke-width:1.9}
   .shell .mobile-nav button.active{background:#e5f6f1;color:#11695f;font-weight:800}

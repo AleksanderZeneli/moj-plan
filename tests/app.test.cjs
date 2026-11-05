@@ -34,6 +34,7 @@ test('settings do not occupy the mobile bar and the shortcut remains accessible'
   assert.ok(!mobile.includes('data-nav="labs"')&&mobile.includes('Do zrobienia'));
   assert.ok(!mobile.includes('data-nav="settings"'));
   assert.ok(a.run('render();root.innerHTML').includes('aria-label="Ustawienia"'));
+  assert.match(fs.readFileSync('styles.css','utf8'),/\.shell \.mobile-nav\{display:grid;grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
 });
 test('week renders official and personal events, overlaps and Sunday; deadlines stay outside time grid',()=>{
   const a=app();
