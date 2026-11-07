@@ -2,13 +2,13 @@
   "group": "WCY25KY2S1",
   "source": "https://kilerdevs.github.io/PlanWAT/WCY25KY2S1/plan.ics",
   "provider": "PlanWAT (nieoficjalne źródło)",
-  "source_generated_at": "2026-11-04",
-  "fetched_at": "2026-11-04T18:13:53.028329+00:00",
+  "source_generated_at": "2026-11-07",
+  "fetched_at": "2026-11-07T09:15:19.153592+00:00",
   "events": [
     {
-      "id": "planwat:c778effafa97774e3493",
-      "title": "Wprowadzenie do programowania",
-      "subject": "Wprowadzenie do programowania",
+      "id": "planwat:bf86dfbfc1d663965c2e",
+      "title": "Wprowadzenie do programowania (Egzamin poprawkowy 1/2)",
+      "subject": "Wprowadzenie do programowania (Egzamin poprawkowy 1/2)",
       "type": "Egzamin poprawkowy",
       "instructor": "",
       "date": "2026-09-14",
@@ -1700,6 +1700,20 @@
       "source": "planwat"
     },
     {
+      "id": "planwat:014c0e503223953de3a7",
+      "title": "Wprowadzenie do programowania (Egzamin poprawkowy 2/2)",
+      "subject": "Wprowadzenie do programowania (Egzamin poprawkowy 2/2)",
+      "type": "Egzamin poprawkowy",
+      "instructor": "",
+      "date": "2026-11-17",
+      "start_time": "19:40",
+      "end_time": "21:15",
+      "location": "224 S",
+      "kind": "university",
+      "recurrence": "none",
+      "source": "planwat"
+    },
+    {
       "id": "planwat:eebb40b7b50366e70e8d",
       "title": "Programowanie obiektowe (Laboratorium 6/16)",
       "subject": "Programowanie obiektowe (Laboratorium 6/16)",
@@ -2870,7 +2884,7 @@
       "date": "2027-01-12",
       "start_time": "13:30",
       "end_time": "15:05",
-      "location": "205 65",
+      "location": "309 S",
       "kind": "university",
       "recurrence": "none",
       "source": "planwat"
