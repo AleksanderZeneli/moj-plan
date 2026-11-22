@@ -2,8 +2,8 @@
   "group": "WCY25KY2S1",
   "source": "https://kilerdevs.github.io/PlanWAT/WCY25KY2S1/plan.ics",
   "provider": "PlanWAT (nieoficjalne źródło)",
-  "source_generated_at": "2026-11-07",
-  "fetched_at": "2026-11-07T09:15:19.153592+00:00",
+  "source_generated_at": "2026-11-22",
+  "fetched_at": "2026-11-22T10:16:35.142462+00:00",
   "events": [
     {
       "id": "planwat:bf86dfbfc1d663965c2e",
@@ -2750,20 +2750,6 @@
       "source": "planwat"
     },
     {
-      "id": "planwat:a727c9552f294967714d",
-      "title": "Systemy Operacyjne (Wykład 12/13)",
-      "subject": "Systemy Operacyjne (Wykład 12/13)",
-      "type": "Wykład",
-      "instructor": "",
-      "date": "2026-12-23",
-      "start_time": "09:50",
-      "end_time": "11:25",
-      "location": "316 S",
-      "kind": "university",
-      "recurrence": "none",
-      "source": "planwat"
-    },
-    {
       "id": "planwat:5ec12bf5563bc22e40b8",
       "title": "Fizyka 2 (Laboratorium 5/5)",
       "subject": "Fizyka 2 (Laboratorium 5/5)",
@@ -2834,9 +2820,9 @@
       "source": "planwat"
     },
     {
-      "id": "planwat:46429951cb056dd217d6",
-      "title": "Systemy Operacyjne (Wykład 13/13)",
-      "subject": "Systemy Operacyjne (Wykład 13/13)",
+      "id": "planwat:becc229bc168f9af2113",
+      "title": "Systemy Operacyjne (Wykład 12/13)",
+      "subject": "Systemy Operacyjne (Wykład 12/13)",
       "type": "Wykład",
       "instructor": "",
       "date": "2027-01-11",
@@ -2885,6 +2871,20 @@
       "start_time": "13:30",
       "end_time": "15:05",
       "location": "309 S",
+      "kind": "university",
+      "recurrence": "none",
+      "source": "planwat"
+    },
+    {
+      "id": "planwat:490819377e919cc25553",
+      "title": "Systemy Operacyjne (Wykład 13/13)",
+      "subject": "Systemy Operacyjne (Wykład 13/13)",
+      "type": "Wykład",
+      "instructor": "",
+      "date": "2027-01-12",
+      "start_time": "16:00",
+      "end_time": "17:35",
+      "location": "316 S",
       "kind": "university",
       "recurrence": "none",
       "source": "planwat"
