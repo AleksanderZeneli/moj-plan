@@ -2,8 +2,8 @@
   "group": "WCY25KY2S1",
   "source": "https://kilerdevs.github.io/PlanWAT/WCY25KY2S1/plan.ics",
   "provider": "PlanWAT (nieoficjalne źródło)",
-  "source_generated_at": "2026-11-22",
-  "fetched_at": "2026-11-22T10:16:35.142462+00:00",
+  "source_generated_at": "2026-11-24",
+  "fetched_at": "2026-11-24T04:58:19.793815+00:00",
   "events": [
     {
       "id": "planwat:bf86dfbfc1d663965c2e",
@@ -1924,20 +1924,6 @@
       "source": "planwat"
     },
     {
-      "id": "planwat:abdd9091e8e1e6e34965",
-      "title": "Algorytmy i struktury danych (Wykład 8/9)",
-      "subject": "Algorytmy i struktury danych (Wykład 8/9)",
-      "type": "Wykład",
-      "instructor": "",
-      "date": "2026-11-23",
-      "start_time": "11:40",
-      "end_time": "13:15",
-      "location": "317 S",
-      "kind": "university",
-      "recurrence": "none",
-      "source": "planwat"
-    },
-    {
       "id": "planwat:4f66b130530bc9fe1e36",
       "title": "Fizyka 2 (Wykład 8/15)",
       "subject": "Fizyka 2 (Wykład 8/15)",
@@ -2745,6 +2731,20 @@
       "start_time": "17:50",
       "end_time": "19:25",
       "location": "233 K",
+      "kind": "university",
+      "recurrence": "none",
+      "source": "planwat"
+    },
+    {
+      "id": "planwat:33701c3ba1d893f716f2",
+      "title": "Algorytmy i struktury danych (Wykład 8/9)",
+      "subject": "Algorytmy i struktury danych (Wykład 8/9)",
+      "type": "Wykład",
+      "instructor": "",
+      "date": "2026-12-23",
+      "start_time": "09:50",
+      "end_time": "11:25",
+      "location": "316 S",
       "kind": "university",
       "recurrence": "none",
       "source": "planwat"
